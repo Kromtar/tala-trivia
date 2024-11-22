@@ -5,6 +5,8 @@ from app.models.user import UserCreate, UserResponse
 from app.services.user_service import create_user, get_user_by_email, get_all_users
 from app.core.auth import create_access_token, admin_required, player_or_admin_required
 
+# TODO: Pasar asegurando rutas
+
 router = APIRouter()
 
 @router.post(
@@ -30,7 +32,7 @@ async def create_user_endpoint(user: UserCreate):
 async def get_all_users_endpoint():
     return await get_all_users()
 
-#TODO: Falta modelo de respuesta, falta modelo de entrada
+# TODO: Falta modelo de respuesta, falta modelo de entrada
 @router.post(
     "/users/login",
     summary="Login de usuario",
@@ -45,7 +47,7 @@ async def login_user(email: str, password: str):
     if not user or not checkpw(password.encode("utf-8"), user.password.encode("utf-8")):
         raise HTTPException(status_code=400, detail="Invalid email or password")
     access_token = create_access_token(
-        #TODO: Validar uso de timedelta
+        # TODO: Validar uso de timedelta
         data={"sub": user.name, "role": user.role}, expires_delta=timedelta(minutes=300)
     )
     return {"access_token": access_token, "token_type": "bearer"}

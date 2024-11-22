@@ -18,7 +18,7 @@ async def create_user(user: UserCreate) -> UserResponse:
 async def get_user_by_email(email: str) -> Optional[UserFull]:
     user = await users_collection.find_one({"email": email})
     if user:
-        #TODO: No es necesario que retorne un modelo
+        # TODO: No es necesario que retorne un modelo
         return UserFull(id=str(user["_id"]), **user)
 
 async def get_all_users():
