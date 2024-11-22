@@ -48,7 +48,7 @@ async def login_user(email: str, password: str):
         raise HTTPException(status_code=400, detail="Invalid email or password")
     access_token = create_access_token(
         # TODO: Validar uso de timedelta
-        data={"sub": user.name, "role": user.role}, expires_delta=timedelta(minutes=300)
+        data={"sub": user.email, "role": user.role}, expires_delta=timedelta(minutes=300)
     )
     return {"access_token": access_token, "token_type": "bearer"}
 
@@ -65,7 +65,7 @@ async def login_for_access_token(username: str = Form(...), password: str = Form
             headers={"WWW-Authenticate": "Bearer"},
         )
     access_token = create_access_token(
-        data={"sub": user.name, "role": user.role}, expires_delta=timedelta(minutes=300)
+        data={"sub": user.email, "role": user.role}, expires_delta=timedelta(minutes=300)
     )
     return {"access_token": access_token, "token_type": "bearer"}
 

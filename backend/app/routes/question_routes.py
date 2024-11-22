@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
 from typing import List, Optional
-from app.models.questions import Question, QuestionInDB, QuestionResponse
+from app.models.question import Question, QuestionInDB, QuestionResponse
 from app.services.question_service import create_question, get_all_questions, delete_question, get_next_question
 from app.core.auth import admin_required
 

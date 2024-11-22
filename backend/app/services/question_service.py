@@ -1,6 +1,6 @@
 from typing import List, Optional
 from motor.motor_asyncio import AsyncIOMotorCollection
-from app.models.questions import Question, QuestionInDB, QuestionResponse
+from app.models.question import Question, QuestionInDB, QuestionResponse
 from app.core.config import db
 from random import shuffle
 

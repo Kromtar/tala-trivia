@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from app.routes.user_routes import router as user_router
-from app.routes.questions_routes import router as questions_routes
+from app.routes.question_routes import router as question_routes
+from app.routes.trivia_routes import router as trivia_routes
 
 app = FastAPI(
     title="My API",
@@ -10,7 +11,8 @@ app = FastAPI(
 
 # Registro de rutas
 app.include_router(user_router)
-app.include_router(questions_routes)
+app.include_router(question_routes)
+app.include_router(trivia_routes)
 
 @app.get("/")
 async def root():

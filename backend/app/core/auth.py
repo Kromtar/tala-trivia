@@ -30,13 +30,13 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
     )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        name: str = payload.get("sub")
+        email: str = payload.get("sub")
         role: str = payload.get("role")
-        if name is None:
+        if email is None:
             raise credentials_exception
     except JWTError:
         raise credentials_exception
-    return {"name": name, "role": role}
+    return {"email": email, "role": role}
 
 def admin_required(current_user: str = Depends(get_current_user)):
     if current_user["role"] != "admin":
