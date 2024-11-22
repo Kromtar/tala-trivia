@@ -31,9 +31,25 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         name: str = payload.get("sub")
+        role: str = payload.get("role")
         if name is None:
             raise credentials_exception
     except JWTError:
         raise credentials_exception
-    # Aquí podrías verificar el usuario en tu base de datos
-    return {"name": name}
+    return {"name": name, "role": role}
+
+def admin_required(current_user: str = Depends(get_current_user)):
+    if current_user["role"] != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to perform this action"
+        )
+    return current_user
+
+def player_or_admin_required(current_user: str = Depends(get_current_user)):
+    if current_user["role"] not in ["admin", "player"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to perform this action"
+        )
+    return current_user
