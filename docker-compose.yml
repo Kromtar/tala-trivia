@@ -1,0 +1,24 @@
+services:
+  backend:
+    build:
+      context: ./backend 
+    container_name: fastapi-backend
+    ports:
+      - "8000:8000" 
+    volumes:
+      - ./backend:/app 
+    depends_on:
+      - mongodb
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017/mydatabase
+
+  mongodb:
+    image: mongo:6.0
+    container_name: mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+
+volumes:
+  mongodb_data:

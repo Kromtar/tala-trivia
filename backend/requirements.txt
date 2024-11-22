@@ -1,0 +1,8 @@
+fastapi[all]
+uvicorn[standard]
+pydantic[email]
+motor
+bcrypt
+python-jose
+black
+flake8
