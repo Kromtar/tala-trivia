@@ -1,4 +1,3 @@
-from datetime import datetime
 from typing import Optional
 from motor.motor_asyncio import AsyncIOMotorCollection
 from app.models.trivia import Trivia, TriviaInDB
@@ -63,13 +62,12 @@ async def get_trivias_by_user(user_id: str, status: Optional[str] = None) -> lis
     return [TriviaInDB(id=str(trivia["_id"]), **trivia) for trivia in trivias]
 
 """
-Permite a un usuario (indicar email) unirse a una Trivia (inidcar ID) donde esta invitado.
+Permite a un Usuario unirse a una Trivia donde esta invitado (su id esta en los "user_ids" de la trivia).
 La invitacion solo se concreta si la Trivia esta en status "waiting_start".
+La invitacion solo se concreta si el usuario no esta en  "joined_users" de ninguna
+otra Trivia qie este en status "waiting_start" o "playing".
+O sea, solo se permite jugar, o querer jugar, a UNA Trivia simultaneamente.
 El usuario es añadido a la lista de "joined_users" en caso de pasar las validaciones correspondientes.
-
-Si todos los usuarios invitados ya han realizado join, el sistema arranca la partida:
-- Se toma nota del datetime del momento de inicio
-- Se inicia un worker que verificara la partida
 """
 async def join_trivia(trivia_id: str, user_email: str) -> TriviaInDB:
     # Buscar el usuario por correo electrónico
@@ -77,6 +75,18 @@ async def join_trivia(trivia_id: str, user_email: str) -> TriviaInDB:
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     user_id = str(user["_id"])
+
+    # Verificar si el usuario ya está unido a otra trivia activa o por comenzar
+    conflicting_trivia = await trivia_collection.find_one({
+        "joined_users": user_id,
+        "status": {"$in": ["waiting_start", "playing"]}
+    })
+    if conflicting_trivia:
+        raise HTTPException(
+            status_code=403,
+            detail=f"El usuario ya está participando en otra trivia (ID: {str(conflicting_trivia['_id'])}) en\
+                 estado '{conflicting_trivia['status']}'"
+        )
 
     # Buscar la trivia por ID
     trivia = await trivia_collection.find_one({"_id": ObjectId(trivia_id)})
@@ -105,22 +115,6 @@ async def join_trivia(trivia_id: str, user_email: str) -> TriviaInDB:
             {"_id": ObjectId(trivia_id)},
             {"$set": {"joined_users": joined_users}}
         )
-
-    # Verificar si todos los usuarios en `user_ids` están en `joined_users`
-    if set(trivia["user_ids"]) == set(joined_users):
-        current_time = datetime.utcnow()  # Obtener el tiempo actual en UTC
-        await trivia_collection.update_one(
-            {"_id": ObjectId(trivia_id)},
-            {"$set": {
-                "status": "playing",
-                "start_time": current_time
-            }}
-        )
-        # Actualizar el documento en memoria para reflejar los cambios
-        trivia["status"] = "playing"
-        trivia["start_time"] = current_time
-
-        # TODO: Aqui iniciamos un worker para gestionar la trivia en curso
 
     trivia["joined_users"] = joined_users
     return TriviaInDB(id=str(trivia["_id"]), **trivia)
