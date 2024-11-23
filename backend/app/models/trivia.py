@@ -30,7 +30,7 @@ class TriviaInDB(Trivia):
         return value
 
 # Usado para reiniciar una trivia de status "playing" a los campos iniciales de "waiting_start"
-class TriviaClean(Trivia):
+class TriviaRollback(Trivia):
     status: str
 
     # Validación para el campo `status`

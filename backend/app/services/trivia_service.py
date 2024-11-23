@@ -1,5 +1,5 @@
 import time
-from typing import Optional
+from typing import Optional, Union
 from motor.motor_asyncio import AsyncIOMotorCollection
 from app.models.trivia import Trivia, TriviaInDB
 from datetime import datetime
@@ -276,3 +276,10 @@ async def submit_answer(trivia_id: str, question_id: str, answer_index: int, use
     return {
         "message": "Respuesta enviada correctamente"
     }
+
+async def get_trivia(trivia_id: str) -> Union[bool, TriviaInDB]:
+    trivia = await trivia_collection.find_one({"_id": ObjectId(trivia_id)})
+    if not trivia:
+        print("Trivia con id {trivia_id} no encontrada.")
+        return False
+    return trivia

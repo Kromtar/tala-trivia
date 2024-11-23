@@ -5,11 +5,18 @@ from motor.motor_asyncio import AsyncIOMotorCollection
 from app.core.config import db
 from bson import ObjectId
 from app.services.question_service import get_question_by_id
+from app.services.trivia_service import get_trivia
+from typing import Union
 
 task_manager = TaskManager()
 trivia_collection: AsyncIOMotorCollection = db["trivias"]
 
-async def start_trivia(trivia_id: str):
+async def start_trivia(trivia_id: str) -> None:
+    """
+    Crea un job para gestionar la 'vida' de una nueva partida de trivia durante su estado de "playing"
+    Cada trivia en estado "playing" esta gestionada por un job independiente que se encarga de 
+    manejar los tiempos de cada ronda, las preguntas, respuestas, la asignación de puntos y el termino de la trivia.
+    """
     try:
         result = await trivia_collection.update_one(
             {"_id": ObjectId(trivia_id)},
@@ -23,29 +30,27 @@ async def start_trivia(trivia_id: str):
     except Exception as e:
         print(f"Error al iniciar la trivia {trivia_id}: {e}", flush=True)
 
-#Obtiene la siguiente pregunta que no ha sido expuesta aun a los jugadores. Si no quedan mas, retorna False
-async def get_next_question_id(trivia_id: str):
-    trivia = await trivia_collection.find_one({"_id": ObjectId(trivia_id)})
+async def get_next_question_id(trivia_id: str) -> Union[bool, str]:
+    """
+    Dada una trivia que en estado "playing", se retorna la ID de la siguiente pregunta (aun no desplegada)
+    que debe ser mostrada a los jugadores.
+    En caso que todas las preguntas ya fueron utilizadas, retorna False
+    """
+    trivia = await get_trivia(trivia_id)
     question_ids = set(trivia.get("question_ids", []))
     round_question_ids = set([question['id'] for question in trivia.get("rounds", [])])
     available_question_ids = list(question_ids - round_question_ids)
     if not available_question_ids:
-        print("Todas las preguntas ya han sido usadas.")
         return False
     return available_question_ids[0]
 
 # TODO: Aqui va la logica de una Trivia, o sea, el manejo de las rondas, preguntas, puntajes...
-async def trivia_worker(trivia_id: str):
+async def trivia_worker(trivia_id: str) -> None:
     print(f"Trabajando en la trivia {trivia_id}", flush=True)
-    trivia = await trivia_collection.find_one({"_id": ObjectId(trivia_id)})
-    if not trivia:
-        print("Trivia con id {trivia_id} no encontrada.")
-        return False
+    trivia = await get_trivia(trivia_id)
 
-    round_count = 0
+    round_count = 1
     while True:
-        round_count += 1
-
         #Mientas existan preguntas sin usar
         question_id = await get_next_question_id(trivia_id)
         if question_id is False:
@@ -81,10 +86,7 @@ async def trivia_worker(trivia_id: str):
         #Revelar respuesta correcta
         #Asignar puntaje de ronda a cada jugador (todos los que no responden obtienen 0 puntos)
 
-        trivia = await trivia_collection.find_one({"_id": ObjectId(trivia_id)})
-        if not trivia:
-            print("Trivia con id {trivia_id} no encontrada.")
-            return False
+        trivia = await get_trivia(trivia_id)
 
         # Obtener la lista de todos los jugadores de la trivia
         all_user_ids = set(trivia.get("user_ids", []))
@@ -135,11 +137,10 @@ async def trivia_worker(trivia_id: str):
             if result.modified_count == 0:
                 raise ValueError(f"No se pudo actualizar el puntaje para el round {round_data['id']}")
 
+            round_count += 1
+
     #Calcular el puntaje de final de cada jugador
-    trivia = await trivia_collection.find_one({"_id": ObjectId(trivia_id)})
-    if not trivia:
-        print("Trivia con id {trivia_id} no encontrada.")
-        return False
+    trivia = await get_trivia(trivia_id)
     # Crear un diccionario para almacenar los puntajes finales
     final_scores = {}
 
