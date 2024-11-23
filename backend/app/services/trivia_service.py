@@ -1,6 +1,8 @@
+import time
 from typing import Optional
 from motor.motor_asyncio import AsyncIOMotorCollection
-from app.models.trivia import Trivia, TriviaInDB
+from app.models.trivia import Trivia, TriviaInDB, TriviaInvitation
+from app.models.question import QuestionPlayer
 from app.core.config import db
 from fastapi import HTTPException
 from bson import ObjectId
@@ -48,24 +50,11 @@ async def get_all_trivias() -> list:
     trivias = await trivia_collection.find().to_list(100)
     return [TriviaInDB(id=str(trivia["_id"]), **trivia) for trivia in trivias]
 
-# Obtener las trivias de un usuario (se puede definir un status)
-"""
-Retorna las Trivias asociadas a un usuario.
-Opcionalmente se puede especificar retornar solo trivias de un determinado status
-"""
-# TODO: Valdiar que el status sea uno de los 3 validos
-async def get_trivias_by_user(user_id: str, status: Optional[str] = None) -> list:
-    query = {"user_ids": user_id}
-    if status:
-        query["status"] = status
-    trivias = await trivia_collection.find(query).to_list(100)
-    return [TriviaInDB(id=str(trivia["_id"]), **trivia) for trivia in trivias]
-
 """
 Permite a un Usuario unirse a una Trivia donde esta invitado (su id esta en los "user_ids" de la trivia).
 La invitacion solo se concreta si la Trivia esta en status "waiting_start".
 La invitacion solo se concreta si el usuario no esta en  "joined_users" de ninguna
-otra Trivia qie este en status "waiting_start" o "playing".
+otra Trivia que este en status "waiting_start" o "playing".
 O sea, solo se permite jugar, o querer jugar, a UNA Trivia simultaneamente.
 El usuario es añadido a la lista de "joined_users" en caso de pasar las validaciones correspondientes.
 """
@@ -118,3 +107,94 @@ async def join_trivia(trivia_id: str, user_email: str) -> TriviaInDB:
 
     trivia["joined_users"] = joined_users
     return TriviaInDB(id=str(trivia["_id"]), **trivia)
+
+"""
+Permite a un usuario retirarse de una Trivia donde se haya unido.
+Esto solo es posible si la Trivia esta en status "waiting_start" y aun no ha partido.
+En caso contrario el usuario no se puede retirar y debe esperar que la Trivia termine.
+"""
+async def leave_trivia(trivia_id: str, user_email: str) -> str:
+    user = await users_collection.find_one({"email": user_email})
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    user_id = str(user["_id"])
+
+    trivia = await trivia_collection.find_one({"_id": ObjectId(trivia_id)})
+    if not trivia:
+        raise HTTPException(status_code=404, detail="Trivia no encontrada")
+
+    if user_id not in trivia["joined_users"]:
+        raise HTTPException(status_code=400, detail="El usuario no está unido a esta trivia")
+
+    if trivia["status"] != "waiting_start":
+        raise HTTPException(status_code=400, detail="Solo puedes salir de trivias con estado 'waiting_start'")
+
+    updated_trivia = await trivia_collection.find_one_and_update(
+        {"_id": ObjectId(trivia_id)},
+        {"$pull": {"joined_users": user_id}}
+    )
+
+    if not updated_trivia:
+        raise HTTPException(status_code=404, detail="Error al intentar salir de la trivia")
+
+    return str(updated_trivia["_id"])
+
+# TODO: El modelo de retorno es dinamico
+# TODO: Este endpoint debe retornar el historia de la Trivia sin pistas al usuario
+# TODO: Usado para poder ver tanto donde puedo participar, la dinamica de una partida en curso y los resultados de una partida historica
+async def get_trivia_details(trivia_id: str, user_email: str):
+    user = await users_collection.find_one({"email": user_email})
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    user_id = str(user["_id"])
+
+    trivia = await trivia_collection.find_one({"_id": ObjectId(trivia_id)})
+    if not trivia:
+        raise HTTPException(status_code=404, detail="Trivia no encontrada")
+
+    if user_id not in trivia["user_ids"]:
+        raise HTTPException(status_code=403, detail="El usuario no está incluido en esta trivia")
+
+    # TODO: Esto debe ser dinamico dependiendo si es admin o usuario y el estado del juego
+    # if user["role"] == "admin":
+    return TriviaInDB(id=str(trivia["_id"]), **trivia)
+
+    # if trivia["status"] == "waiting_start":
+    #     return TriviaInvitation(id=str(trivia["_id"]), **trivia)
+
+async def get_question_for_trivia(trivia_id: str, user_email: str) -> QuestionPlayer:
+    user = await users_collection.find_one({"email": user_email})
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    user_id = str(user["_id"])
+
+    trivia = await trivia_collection.find_one({"_id": ObjectId(trivia_id)})
+    if not trivia:
+        raise HTTPException(status_code=404, detail="Trivia no encontrada")
+
+    if user_id not in trivia["user_ids"]:
+        raise HTTPException(status_code=403, detail="El usuario no está incluido en esta Trivia")
+
+    if trivia["status"] != "playing":
+        raise HTTPException(status_code=400, detail="Esta Trivia no esta activa")
+
+    # La pregunta que corresponde mostrar al usuario es aquella que aun no tiene aun el campo "round_score"
+    active_question = next((q for q in trivia["rounds"] if "round_score" not in q), None)
+
+    if not active_question:
+        raise HTTPException(status_code=400, detail="No hay una pregunta activa en esta Trivia")
+
+    # Obtener el tiempo restante para la ronda
+    current_time = int(time.time())
+    round_endtime_timestamp = active_question["round_endtime"].timestamp()
+    round_timeleft = round(max(0, round_endtime_timestamp - current_time))
+
+    # Formatear la respuesta con los detalles de la pregunta activa
+    return QuestionPlayer(
+        id=active_question["id"],
+        question=active_question["question"],
+        possible_answers=active_question["possible_answers"],
+        difficulty=active_question["difficulty"],
+        round_count=active_question["round_count"],
+        round_timeleft=round_timeleft
+    )

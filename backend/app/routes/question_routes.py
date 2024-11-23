@@ -11,7 +11,7 @@ router = APIRouter()
     "/questions/",
     response_model=QuestionInDB,
     status_code=201,  # TODO: Que hace esto ?
-    summary="Crear una nueva pregunta",
+    summary="(Admin) Crear una nueva Pregunta",
     description="Este endpoint permite crear una nueva pregunta, \
         con sus posibles respuestas y dificultad.",
     tags=["Questions"]
@@ -26,7 +26,7 @@ async def create_question_endpoint(
 @router.get(
     "/questions/",
     response_model=List[QuestionInDB],
-    summary="Obtener todas las preguntas",
+    summary="(Admin) Obtener todas las Preguntas",
     description="Devuelve una lista con todas las preguntas registradas en el sistema. \
         Incluye las posibles respuestas, difucultad y solucion.",
     tags=["Questions"]
@@ -38,7 +38,7 @@ async def get_all_questions_endpoint(current_role: dict = Depends(admin_required
 @router.delete(
     "/questions/{question_id}",
     response_model=QuestionInDB,
-    summary="Elimina una pregunta",
+    summary="(Admin) Elimina una pregunta",
     tags=["Questions"]
 )
 async def delete_question_endpoint(question_id: str, current_role: dict = Depends(admin_required)):

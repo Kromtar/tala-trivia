@@ -1,5 +1,6 @@
 from pydantic import BaseModel, conlist, conint
-from typing import List
+from typing import List, Optional
+from datetime import datetime
 
 class Question(BaseModel):
     question: str
@@ -17,3 +18,22 @@ class QuestionResponse(BaseModel):
     possible_answers: List[str]
     difficulty: int
     correct_answer_index: int
+
+# Formato de pregunta entregada al usuario sin incluir informacion peligrosa
+class QuestionPlayer(BaseModel):
+    question: str
+    possible_answers: List[str]
+    difficulty: int
+    round_count: int
+    round_timeleft: int
+
+# Formato de Question Guardado el coleccion Trivia
+class QuestionInTrivia(BaseModel):
+    id: str
+    question: str
+    possible_answers: List[str]
+    difficulty: int
+    correct_answer_index: int
+    round_count: int
+    round_endtime: datetime
+    round_score: Optional[int] = 0

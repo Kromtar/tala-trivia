@@ -1,7 +1,16 @@
-from fastapi import APIRouter, HTTPException, Depends, Query
-from typing import List, Optional
+from fastapi import APIRouter, HTTPException, Depends
+from typing import List
 from app.models.trivia import Trivia, TriviaInDB
-from app.services.trivia_service import create_trivia, delete_trivia, get_all_trivias, get_trivias_by_user, join_trivia
+from app.services.trivia_service import (
+    create_trivia,
+    delete_trivia,
+    get_all_trivias,
+    join_trivia,
+    leave_trivia,
+    get_trivia_details,
+    get_question_for_trivia
+)
+from app.models.question import QuestionPlayer
 from app.core.auth import admin_required, player_or_admin_required
 
 router = APIRouter()
@@ -11,7 +20,7 @@ router = APIRouter()
     "/trivias/",
     response_model=TriviaInDB,
     status_code=201,  # Esto indica el código HTTP que se devolverá cuando la creación sea exitosa
-    summary="Crear una nueva trivia",
+    summary="(Admin) Crear una nueva Trivia",
     description="Este endpoint permite crear una nueva trivia con nombre,\
          descripción, preguntas, usuarios y tiempo de ronda.",
     tags=["Trivias"]
@@ -26,7 +35,7 @@ async def create_trivia_endpoint(
 @router.delete(
     "/trivias/{trivia_id}",
     response_model=TriviaInDB,
-    summary="Eliminar una trivia",
+    summary="(Admin) Eliminar una Trivia",
     description="Este endpoint elimina una trivia por su ID.",
     tags=["Trivias"]
 )
@@ -43,7 +52,7 @@ async def delete_trivia_endpoint(
 @router.get(
     "/trivias/",
     response_model=List[TriviaInDB],
-    summary="Obtener todas las trivias",
+    summary="(Admin) Obtener todas las Trivias",
     description="Devuelve una lista con todas las trivias registradas en el sistema.",
     tags=["Trivias"]
 )
@@ -51,36 +60,10 @@ async def get_all_trivias_endpoint(current_role: dict = Depends(admin_required))
     trivias = await get_all_trivias()
     return trivias
 
-
-# Endpoint para obtener trivias por un usuario específico y estado
-# TODO: Obtener la id desde el email que esta en la token
-# TODO: Ruta "Mis trivias activas, "Mis Trivias historicas, "Mis trivias por jugar"
-@router.get(
-    "/trivias/user/{user_id}",
-    response_model=List[TriviaInDB],
-    summary="Obtener trivias por usuario y estado",
-    description="Devuelve una lista con todas las trivias en las que el\
-         usuario especificado esté listado. Se puede filtrar por estado.",
-    tags=["Trivias"]
-)
-async def get_trivias_by_user_endpoint(
-    user_id: str,
-    status: Optional[str] = Query(
-        None,
-        enum=["ended", "playing", "waiting_start"],
-        description="Filtrar por estado de la trivia"
-    )
-):
-    trivias = await get_trivias_by_user(user_id, status)
-    if not trivias:
-        raise HTTPException(status_code=404, detail="No trivias found for this user")
-    return trivias
-
-
 @router.post(
     "/trivias/{trivia_id}/join",
     response_model=TriviaInDB,
-    summary="Unirse a una trivia",
+    summary="Unirse a una Trivia",
     description="Permite a un usuario unirse a una trivia si está listado en los `user_ids`. \
                  Si ya se unió antes, no lo añade de nuevo.",
     tags=["Trivias"]
@@ -91,12 +74,46 @@ async def join_trivia_endpoint(
 ):
     return await join_trivia(trivia_id, current_user["email"])
 
-# TODO: Endpoint para salirse de una trivia en caso que aun no empezara (sino debes esperar a que termine el juego)
+@router.post(
+    "/trivias/{trivia_id}/leave",
+    response_model=str,
+    summary="Salir de una Trivia",
+    description="Permite a un usuario salirse de una Trivia. Solo es posible si el juego aun no ha emepzado.",
+    tags=["Trivias"]
+)
+async def leave_trivia_endpoint(
+    trivia_id: str,
+    current_user: dict = Depends(player_or_admin_required),  # Se obtiene el ID del usuario actual
+):
+    return await leave_trivia(trivia_id, current_user["email"])
 
-# TODO: Endpoint para obtener listado de IDs trivias donde estoy invitado / estoy jugando / historico
 
 # TODO: Endpoint para ver todo el detalle de una trivia a la cual estoy siendo invitado, estoy jugando, historico
+@router.get(
+    "/trivias/{trivia_id}",
+    summary="Obtener detalle de una Trivia",
+    description="Permite al usuario ver el detalle de una Trivia. El usuario debe estar invitado, participando o\
+        haber participado en la trivia para poder ver el detalle.",
+    tags=["Trivias"]
+)
+async def get_trivia_details_endpoint(
+    trivia_id: str,
+    current_user: dict = Depends(player_or_admin_required),  # Se obtiene el ID del usuario actual
+):
+    return await get_trivia_details(trivia_id, current_user["email"])
 
-# TODO: Endpoint para ver las pregutnas, dificultad y tiempo resptante de una trivia
+@router.get(
+    "/trivias/{trivia_id}/question",
+    response_model=QuestionPlayer,
+    summary="Obtener la pregunta actual de una Trivia",
+    description="Permite al usuario ver la pregunta actual si la Trivia está esta en juego",
+    tags=["Trivias"]
+)
+async def get_question_for_trivia_endpoint(
+    trivia_id: str,
+    current_user: dict = Depends(player_or_admin_required),  # Se obtiene el ID del usuario actual
+):
+    return await get_question_for_trivia(trivia_id, current_user["email"])
+
 
 # TODO: Endpoint para enviar una respuesta a una trivia

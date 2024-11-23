@@ -81,6 +81,12 @@ async def trivia_worker(trivia_id: str):
         #Revelar respuesta correcta
         #Asignar puntaje de ronda a cada jugador (todos los que no responden obtienen 0 puntos)
 
+        await trivia_collection.update_many(
+            {"_id": ObjectId(trivia_id)},  # Filtramos por la trivia que queremos actualizar
+            {"$set": {"rounds.$[elem].round_score": 0}},  # Establece "round_score" a 0 en las rondas sin "round_score"
+            array_filters=[{"elem.round_score": {"$exists": False}}]  # Solo modifica las rondas sin "round_score"
+        )
+
 
     #Calcular el puntaje de final de cada jugador
     #Pasar la partida a terminada
