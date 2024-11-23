@@ -28,6 +28,7 @@ class QuestionPlayer(BaseModel):
     round_count: int
     round_timeleft: int
     answered: str
+    total_rounds: int
 
 class QuestionInTriviaResponses(BaseModel):
     user_id: str

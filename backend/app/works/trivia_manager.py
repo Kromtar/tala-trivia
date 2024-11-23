@@ -161,7 +161,8 @@ async def trivia_worker(trivia_id: str):
     # TODO: Pasar juego a finalizado
     await trivia_collection.update_one(
         {"_id": ObjectId(trivia_id)},
-        {"$set": {"final_score": final_scores_list}}
+        {"$set": {"final_score": final_scores_list, "status": "ended"}}
+        #{"$set": {"final_score": final_scores_list}}
     )
 
     #Pasar la partida a terminada

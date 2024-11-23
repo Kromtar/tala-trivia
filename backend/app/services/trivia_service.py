@@ -107,6 +107,7 @@ async def join_trivia(trivia_id: str, user_email: str) -> TriviaInDB:
         )
 
     trivia["joined_users"] = joined_users
+    # TODO: Remover la de la respues la lista de ids de las preguntas, puede ser una pista
     return TriviaInDB(id=str(trivia["_id"]), **trivia)
 
 """
@@ -198,6 +199,9 @@ async def get_question_for_trivia(trivia_id: str, user_email: str) -> QuestionPl
     round_endtime_timestamp = active_question["round_endtime"].timestamp()
     round_timeleft = round(max(0, round_endtime_timestamp - current_time))
 
+    # Calcular el total de rondas
+    total_rounds = len(trivia["question_ids"])
+
     # Formatear la respuesta con los detalles de la pregunta activa
     return QuestionPlayer(
         id=active_question["id"],
@@ -206,7 +210,8 @@ async def get_question_for_trivia(trivia_id: str, user_email: str) -> QuestionPl
         difficulty=active_question["difficulty"],
         round_count=active_question["round_count"],
         round_timeleft=round_timeleft,
-        answered=answered_status
+        answered=answered_status,
+        total_rounds=total_rounds
     )
 
 
