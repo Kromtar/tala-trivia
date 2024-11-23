@@ -21,6 +21,7 @@ class QuestionResponse(BaseModel):
 
 # Formato de pregunta entregada al usuario sin incluir informacion peligrosa
 class QuestionPlayer(BaseModel):
+    id: str
     question: str
     possible_answers: List[str]
     difficulty: int

@@ -1,7 +1,8 @@
 import time
 from typing import Optional
 from motor.motor_asyncio import AsyncIOMotorCollection
-from app.models.trivia import Trivia, TriviaInDB, TriviaInvitation
+from app.models.trivia import Trivia, TriviaInDB
+from datetime import datetime
 from app.models.question import QuestionPlayer
 from app.core.config import db
 from fastapi import HTTPException
@@ -141,7 +142,8 @@ async def leave_trivia(trivia_id: str, user_email: str) -> str:
 
 # TODO: El modelo de retorno es dinamico
 # TODO: Este endpoint debe retornar el historia de la Trivia sin pistas al usuario
-# TODO: Usado para poder ver tanto donde puedo participar, la dinamica de una partida en curso y los resultados de una partida historica
+# TODO: Usado para poder ver tanto donde puedo participar, la dinamica de una partida en curso
+# y los resultados de una partida historica
 async def get_trivia_details(trivia_id: str, user_email: str):
     user = await users_collection.find_one({"email": user_email})
     if not user:
@@ -198,3 +200,66 @@ async def get_question_for_trivia(trivia_id: str, user_email: str) -> QuestionPl
         round_count=active_question["round_count"],
         round_timeleft=round_timeleft
     )
+
+
+async def submit_answer(trivia_id: str, question_id: str, answer_index: int, user_email: str):
+    # Verificar que el usuario exista
+    user = await users_collection.find_one({"email": user_email})
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    user_id = str(user["_id"])
+
+    # Verificar que la trivia exista
+    trivia = await trivia_collection.find_one({"_id": ObjectId(trivia_id)})
+    if not trivia:
+        raise HTTPException(status_code=404, detail="Trivia no encontrada")
+
+    # Verificar que el usuario esté en la trivia
+    if user_id not in trivia["user_ids"]:
+        raise HTTPException(status_code=403, detail="El usuario no está incluido en esta Trivia")
+
+    # Verificar que la trivia esté en estado "playing"
+    if trivia["status"] != "playing":
+        raise HTTPException(status_code=400, detail="Esta Trivia no está activa")
+
+    # Verificar que la pregunta exista y sea la activa
+    question = next((q for q in trivia["rounds"] if q["id"] == question_id and "round_score" not in q), None)
+    if not question:
+        raise HTTPException(status_code=404, detail="La pregunta no existe o ya ha finalizado")
+
+    # Verificar que la respuesta esté dentro del tiempo permitido
+    current_time = datetime.utcnow()
+    if current_time >= question["round_endtime"]:
+        raise HTTPException(status_code=400, detail="El tiempo para responder esta pregunta ha expirado")
+
+    # Validar si el usuario ya respondió esta pregunta
+    existing_response = next((resp for resp in question.get("responses", []) if resp["user_id"] == user_id), None)
+    if existing_response:
+        raise HTTPException(status_code=400, detail="El usuario ya respondió esta pregunta,\
+             no puedes cambiar tu respuesta")
+
+    # Validar que answer_index esté dentro del rango permitido
+    possible_answers = question.get("possible_answers", [])
+    if not (0 < answer_index <= len(possible_answers)):
+        raise HTTPException(
+            status_code=400,
+            detail=f"El índice de respuesta debe estar entre 1 y {len(possible_answers)}"
+        )
+
+    response_data = {
+        "user_id": user_id,
+        "answer_index": answer_index,
+        "submitted_at": current_time
+    }
+
+    result = await trivia_collection.update_one(
+        {"_id": ObjectId(trivia_id), "rounds.id": question_id},
+        {"$push": {"rounds.$.responses": response_data}}
+    )
+
+    if result.modified_count == 0:
+        raise HTTPException(status_code=400, detail="No se pudo registrar la respuesta")
+
+    return {
+        "message": "Respuesta enviada correctamente"
+    }

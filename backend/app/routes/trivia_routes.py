@@ -8,7 +8,8 @@ from app.services.trivia_service import (
     join_trivia,
     leave_trivia,
     get_trivia_details,
-    get_question_for_trivia
+    get_question_for_trivia,
+    submit_answer
 )
 from app.models.question import QuestionPlayer
 from app.core.auth import admin_required, player_or_admin_required
@@ -116,4 +117,18 @@ async def get_question_for_trivia_endpoint(
     return await get_question_for_trivia(trivia_id, current_user["email"])
 
 
-# TODO: Endpoint para enviar una respuesta a una trivia
+@router.post(
+    "/trivias/{trivia_id}/questions/{question_id}/answer",
+    summary="Enviar respuesta a una pregunta de Trivia",
+    description="Permite al usuario enviar su respuesta para una pregunta activa en una trivia.\
+        El usuario debe enviar el index de la respuesta correspondiente a las preguntas mostras al\
+        usar /trivias/{trivia_id}/question",
+    tags=["Trivias"]
+)
+async def submit_answer_to_trivia_question(
+    trivia_id: str,
+    question_id: str,
+    answer_position: int,
+    current_user: dict = Depends(player_or_admin_required),  # Se obtiene el ID del usuario actual
+):
+    return await submit_answer(trivia_id, question_id, answer_position, current_user["email"])
