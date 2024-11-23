@@ -90,3 +90,13 @@ async def join_trivia_endpoint(
     current_user: dict = Depends(player_or_admin_required),  # Se obtiene el ID del usuario actual
 ):
     return await join_trivia(trivia_id, current_user["email"])
+
+# TODO: Endpoint para salirse de una trivia en caso que aun no empezara (sino debes esperar a que termine el juego)
+
+# TODO: Endpoint para obtener listado de IDs trivias donde estoy invitado / estoy jugando / historico
+
+# TODO: Endpoint para ver todo el detalle de una trivia a la cual estoy siendo invitado, estoy jugando, historico
+
+# TODO: Endpoint para ver las pregutnas, dificultad y tiempo resptante de una trivia
+
+# TODO: Endpoint para enviar una respuesta a una trivia

@@ -1,42 +1,13 @@
 import asyncio
-from datetime import datetime
 from app.core.task_manager import TaskManager
 from motor.motor_asyncio import AsyncIOMotorCollection
 from app.core.config import db
+from app.works.trivia_manager import start_trivia
+from app.models.trivia import TriviaClean
 from bson import ObjectId
 
-# Instancia de TaskManager
 task_manager = TaskManager()
-
 trivia_collection: AsyncIOMotorCollection = db["trivias"]
-
-async def start_trivia(trivia_id: str):
-    """Función que inicia una trivia, cambia su estado a 'playing' y ejecuta un worker con la trivia."""
-    try:
-        current_time = datetime.utcnow()  # Obtener el tiempo actual en UTC
-        result = await trivia_collection.update_one(
-            {"_id": ObjectId(trivia_id)},
-            {"$set": {
-                "status": "playing",
-                "start_time": current_time
-            }}
-        )
-        if result.modified_count == 0:
-            print(f"Error al iniciar la Trivia {trivia_id}", flush=True)
-            return
-
-        await task_manager.start_task(f"trivia_worker_{trivia_id}", trivia_worker, trivia_id)
-        print(f"Trivia {trivia_id} iniciada correctamente", flush=True)
-    except Exception as e:
-        print(f"Error al iniciar la trivia {trivia_id}: {e}", flush=True)
-
-# TODO: Aqui va la logica de una Trivia, o sea, el manejo de las rondas, preguntas, puntajes...
-async def trivia_worker(trivia_id: str):
-    """Worker para ejecutar la trivia. Puedes colocar la lógica del juego aquí."""
-    print(f"Trabajando en la trivia {trivia_id}", flush=True)
-    # Simulación de trabajo que dura 10 segundos.
-    await asyncio.sleep(10)
-    print(f"Trivia {trivia_id} terminada.", flush=True)
 
 async def check_trivias():
     """Función periódica que revisa las trivias en 'waiting_start'."""
@@ -58,9 +29,18 @@ async def check_trivias():
             print(f"Error en la tarea de revisión de trivias: {e}", flush=True)
             await asyncio.sleep(3)  # Reintentar después de un error
 
-# Configuración para iniciar la tarea
 async def start_check_trivias_task():
-    """Inicia la tarea que revisa las trivias periódicamente."""
+    # Resetea cualquier trivia en status "playing" a su estado "waiting_start" y remueve a todos los "joined_users"
+    trivias_playing = await trivia_collection.find({"status": "playing"}).to_list(length=None)
+    for trivia in trivias_playing:
+        clean_data = {key: trivia[key] for key in TriviaClean.__fields__ if key in trivia}
+        clean_data["status"] = "waiting_start"
+        clean_trivia = TriviaClean(**clean_data)
+        await trivia_collection.replace_one(
+            {"_id": ObjectId(trivia["_id"])},
+            clean_trivia.dict()
+        )
+
     await task_manager.start_task("check_trivias_task", check_trivias)
 
 async def stop_check_trivias_task():

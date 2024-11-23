@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from app.works.trivia_checker import start_check_trivias_task, stop_check_trivias_task
+from app.works.trivia_runner import start_check_trivias_task, stop_check_trivias_task
 from app.routes.user_routes import router as user_router
 from app.routes.question_routes import router as question_routes
 from app.routes.trivia_routes import router as trivia_routes

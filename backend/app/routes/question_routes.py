@@ -1,7 +1,7 @@
-from fastapi import APIRouter, HTTPException, Depends, Query
-from typing import List, Optional
-from app.models.question import Question, QuestionInDB, QuestionResponse
-from app.services.question_service import create_question, get_all_questions, delete_question, get_next_question
+from fastapi import APIRouter, HTTPException, Depends
+from typing import List
+from app.models.question import Question, QuestionInDB
+from app.services.question_service import create_question, get_all_questions, delete_question
 from app.core.auth import admin_required
 
 router = APIRouter()
@@ -46,21 +46,3 @@ async def delete_question_endpoint(question_id: str, current_role: dict = Depend
     if not deleted_question:
         raise HTTPException(status_code=404, detail="Question not found")
     return deleted_question
-
-# TODO: Para testing
-@router.get(
-    "/questions/next",
-    response_model=QuestionResponse,
-    summary="Obtener la siguiente pregunta",
-    description="Devuelve una pregunta de dificultad determinada\
-         y sus respuestas posibles mezcladas.",
-    tags=["Questions"],
-)
-async def next_question(
-    difficulty: int = Query(..., ge=1, le=3),  # Aseguramos que la dificultad esté entre 1 y 3
-    used_ids: Optional[List[str]] = Query([]),  # Ids de preguntas ya usadas
-):
-    question = await get_next_question(difficulty, used_ids)
-    if not question:
-        raise HTTPException(status_code=404, detail="No se encontró una preguntas")
-    return question
