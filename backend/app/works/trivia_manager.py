@@ -81,13 +81,88 @@ async def trivia_worker(trivia_id: str):
         #Revelar respuesta correcta
         #Asignar puntaje de ronda a cada jugador (todos los que no responden obtienen 0 puntos)
 
-        await trivia_collection.update_many(
-            {"_id": ObjectId(trivia_id)},  # Filtramos por la trivia que queremos actualizar
-            {"$set": {"rounds.$[elem].round_score": 0}},  # Establece "round_score" a 0 en las rondas sin "round_score"
-            array_filters=[{"elem.round_score": {"$exists": False}}]  # Solo modifica las rondas sin "round_score"
-        )
+        trivia = await trivia_collection.find_one({"_id": ObjectId(trivia_id)})
+        if not trivia:
+            print("Trivia con id {trivia_id} no encontrada.")
+            return False
 
+        # Obtener la lista de todos los jugadores de la trivia
+        all_user_ids = set(trivia.get("user_ids", []))
+
+        # Recorrer los rounds y procesar aquellos que no tengan la propiedad "round_score"
+        for round_data in trivia.get("rounds", []):
+            if "round_score" in round_data:
+                continue  # Si ya tiene round_score, lo ignoramos
+
+            # Inicializar el puntaje para este round
+            round_score = []
+
+            # Obtener el índice de la respuesta correcta y la dificultad
+            correct_answer_index = round_data["correct_answer_index"]
+            difficulty = round_data["difficulty"]
+
+            # Calcular puntajes según las respuestas de los usuarios
+            responded_user_ids = set()
+            for response in round_data.get("responses", []):
+                user_id = response["user_id"]
+                responded_user_ids.add(user_id)
+                answer_index = response["answer_index"]
+
+                # Asignar puntaje si la respuesta es correcta
+                score = difficulty if (answer_index - 1) == correct_answer_index else 0
+
+                # Añadir el puntaje del usuario al round_score
+                round_score.append({"user_id": user_id, "score": score})
+           
+            # Identificar usuarios que no respondieron
+            non_responded_user_ids = all_user_ids - responded_user_ids
+            for user_id in non_responded_user_ids:
+                round_score.append({"user_id": user_id, "score": 0})
+
+            # Obtener respuestas y la respuesta correcta
+            correct_answer_index = round_data.get("correct_answer_index")
+            possible_answers = round_data.get("possible_answers", [])
+            if correct_answer_index is None or correct_answer_index >= len(possible_answers):
+                raise ValueError(f"Índice de respuesta correcta inválido para el round {round_data['id']}")
+            correct_answer_text = possible_answers[correct_answer_index]
+
+            # Actualizar la base de datos con el puntaje calculado
+            result = await trivia_collection.update_one(
+                {"_id": ObjectId(trivia_id), "rounds.id": round_data["id"]},
+                {"$set": {"rounds.$.round_score": round_score, "rounds.$.correct_answer": correct_answer_text}}
+            )
+
+            if result.modified_count == 0:
+                raise ValueError(f"No se pudo actualizar el puntaje para el round {round_data['id']}")
 
     #Calcular el puntaje de final de cada jugador
+    trivia = await trivia_collection.find_one({"_id": ObjectId(trivia_id)})
+    if not trivia:
+        print("Trivia con id {trivia_id} no encontrada.")
+        return False
+    # Crear un diccionario para almacenar los puntajes finales
+    final_scores = {}
+
+    # Recorrer los rounds y acumular los puntajes
+    for round_data in trivia.get("rounds", []):
+        for score_entry in round_data.get("round_score", []):
+            user_id = score_entry["user_id"]
+            score = score_entry["score"]
+
+            if user_id in final_scores:
+                final_scores[user_id] += score
+            else:
+                final_scores[user_id] = score
+    
+    # Formatear el resultado como una lista de diccionarios
+    final_scores_list = [{"user_id": user_id, "score": score} for user_id, score in final_scores.items()]
+
+    # Actualizar el documento en la base de datos
+    # TODO: Pasar juego a finalizado
+    await trivia_collection.update_one(
+        {"_id": ObjectId(trivia_id)},
+        {"$set": {"final_score": final_scores_list}}
+    )
+
     #Pasar la partida a terminada
     print(f"Trivia {trivia_id} terminada.", flush=True)

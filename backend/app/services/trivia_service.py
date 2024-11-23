@@ -186,6 +186,13 @@ async def get_question_for_trivia(trivia_id: str, user_email: str) -> QuestionPl
     if not active_question:
         raise HTTPException(status_code=400, detail="No hay una pregunta activa en esta Trivia")
 
+    # Verificar si el usuario ya respondió la pregunta
+    answered_status = "not answered"
+    for response in active_question.get("responses", []):
+        if response["user_id"] == user_id:
+            answered_status = "answered"
+            break
+
     # Obtener el tiempo restante para la ronda
     current_time = int(time.time())
     round_endtime_timestamp = active_question["round_endtime"].timestamp()
@@ -198,7 +205,8 @@ async def get_question_for_trivia(trivia_id: str, user_email: str) -> QuestionPl
         possible_answers=active_question["possible_answers"],
         difficulty=active_question["difficulty"],
         round_count=active_question["round_count"],
-        round_timeleft=round_timeleft
+        round_timeleft=round_timeleft,
+        answered=answered_status
     )
 
 

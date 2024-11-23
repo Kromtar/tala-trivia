@@ -10,11 +10,16 @@ class Trivia(BaseModel):
     user_ids: conlist(str, min_length=1)
     round_time_sec: Optional[conint(ge=1, le=3600)] = 60
 
+class TriviaFinalSocre(BaseModel):
+    user_id: str
+    score: int
+
 class TriviaInDB(Trivia):
     id: str
     status: str
     joined_users: Optional[List[str]] = []
     rounds: Optional[List[QuestionInTrivia]] = []
+    final_score: Optional[List[TriviaFinalSocre]] = []
 
     # Validación para el campo `status`
     @validator("status")
