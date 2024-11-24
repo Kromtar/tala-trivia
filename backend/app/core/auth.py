@@ -2,16 +2,14 @@ from datetime import datetime, timedelta
 from jose import JWTError, jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
+from app.core.constants import LOGIN_PATH, SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
 
-# Configuración del JWT
-SECRET_KEY = "your_secret_key"
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 3000
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl=LOGIN_PATH)
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
-
-# Crear el token JWT
-def create_access_token(data: dict, expires_delta: timedelta = None):
+def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
+    """
+    Generador de JWT
+    """
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
@@ -21,11 +19,13 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-# Verificar el token y obtener el usuario
-def get_current_user(token: str = Depends(oauth2_scheme)):
+def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
+    """
+    Decoder de JWT
+    """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
+        detail="No se pudieron validar las credenciales",
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
@@ -38,7 +38,10 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
         raise credentials_exception
     return {"email": email, "role": role}
 
-def admin_required(current_user: str = Depends(get_current_user)):
+def admin_required(current_user: str = Depends(get_current_user)) -> dict:
+    """
+    Validador de role admin
+    """
     if current_user["role"] != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -46,7 +49,10 @@ def admin_required(current_user: str = Depends(get_current_user)):
         )
     return current_user
 
-def player_or_admin_required(current_user: str = Depends(get_current_user)):
+def player_or_admin_required(current_user: str = Depends(get_current_user)) -> dict:
+    """
+    Validador de role admin o player
+    """
     if current_user["role"] not in ["admin", "player"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

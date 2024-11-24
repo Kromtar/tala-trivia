@@ -1,49 +1,78 @@
 from typing import List, Optional
 from motor.motor_asyncio import AsyncIOMotorCollection
-from app.models.question import Question, QuestionInDB, QuestionResponse
+from app.models.question import Question, QuestionInDB, QuestionUpdate
 from app.core.config import db
-from random import shuffle
 from bson import ObjectId
+from fastapi import HTTPException
+from app.services.trivia_service import get_trivia
 
 questions_collection: AsyncIOMotorCollection = db["questions"]
 
-# Crea una nueva pretunta
 async def create_question(question: Question) -> QuestionInDB:
+    """
+    Crea una nueva pregunta
+    """
     question_dict = question.dict()
     result = await questions_collection.insert_one(question_dict)
     return QuestionInDB(id=str(result.inserted_id), **question.dict())
 
-# Obtener todas las preguntas
 async def get_all_questions() -> List[QuestionInDB]:
+    """
+    Recupera todas las preguntas
+    """
     questions_cursor = questions_collection.find()
     questions = []
     async for question in questions_cursor:
         questions.append(QuestionInDB(id=str(question["_id"]), **question))
     return questions
 
-# Eliminar una pregunta por ID
-async def delete_question(question_id: str) -> Optional[QuestionInDB]:
-    result = await questions_collection.find_one_and_delete({"_id": question_id})
+async def get_question(question_id: str) -> Optional[QuestionInDB]:
+    """
+    Recupera una pregunta
+    """
+    result = await questions_collection.find_one({"_id": ObjectId(question_id)})
     if result:
         return QuestionInDB(id=str(result["_id"]), **result)
     return None
 
 
-async def get_question_by_id(question_id: str) -> Optional[QuestionResponse]:
-    question = await questions_collection.find_one({"_id": ObjectId(question_id)})
-    if not question:
-        return None
+async def delete_question(question_id: str) -> Optional[QuestionInDB]:
+    """
+    Elimina una pregunta
+    Solo se pueden eliminar preguntas que no estén asociadas a ninguna Trivia
+    """
+    trivia_using_question = await get_trivia(question_id, False)
+    if trivia_using_question is not False:
+        raise HTTPException(
+            status_code=400,
+            detail=f"La pregunta con ID {question_id} no puede eliminarse porque está\
+                asociada a la Trivia '{trivia_using_question['_id']}'."
+        )
+    result = await questions_collection.find_one_and_delete({"_id": question_id})
+    if result:
+        return QuestionInDB(id=str(result["_id"]), **result)
+    return None
 
-    # Crear la lista de posibles respuestas (distractores + respuesta correcta)
-    possible_answers = question["distractors"] + [question["answer"]]
-    shuffle(possible_answers)
-    correct_answer_index = possible_answers.index(question["answer"])
+async def update_question(question_id: str, updated_question: QuestionUpdate) -> QuestionInDB:
+    """
+    Actualiza una pregunta
+    La pregunta no puede estar asociada a ninguna Trivia para poder ser actualizada.
+    """
+    trivia_using_question = await get_trivia(question_id, False)
+    if trivia_using_question is not False:
+        raise HTTPException(
+            status_code=400,
+            detail=f"La pregunta con ID {question_id} no puede ser actualizada porque está\
+                asociada a la Trivia '{trivia_using_question['_id']}'."
+        )
 
-    # Retornar la respuesta usando el modelo QuestionResponse
-    return QuestionResponse(
-        id=str(question["_id"]),
-        question=question["question"],
-        possible_answers=possible_answers,
-        difficulty=question["difficulty"],
-        correct_answer_index=correct_answer_index
+    update_data = {k: v for k, v in updated_question.dict().items() if v is not None}
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No se han enviado campos para actualizar.")
+
+    result = await questions_collection.find_one_and_update(
+        {"_id": ObjectId(question_id)},
+        {"$set": update_data},
+        return_document=True
     )
+    return result

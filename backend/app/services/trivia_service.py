@@ -1,10 +1,12 @@
 import time
-from typing import Optional, Union
+from typing import Optional, Union, List
 from motor.motor_asyncio import AsyncIOMotorCollection
-from app.models.trivia import Trivia, TriviaInDB
+from app.models.trivia import Trivia, TriviaInDB, TriviaProtected
 from datetime import datetime
-from app.models.question import QuestionPlayer
+from app.models.question import DisplayedQuestion
 from app.core.config import db
+from app.services.user_service import get_user_by_email
+from app.core.constants import QUESTION_STATUS
 from fastapi import HTTPException
 from bson import ObjectId
 
@@ -12,11 +14,15 @@ trivia_collection: AsyncIOMotorCollection = db["trivias"]
 users_collection: AsyncIOMotorCollection = db["users"]
 questions_collection: AsyncIOMotorCollection = db["questions"]
 
-"""
-Crea una nueva Trivia compuesta de una serie de Questions y donde se invitan una serie de Usuarios
-"""
+
 # TODO: Invitar usando emails
 async def create_trivia(trivia: Trivia) -> TriviaInDB:
+    """
+    Crea una nueva Trivia compuesta de una serie de Questions y donde se invitan una serie de Usuarios
+    Las Trivias creadas parten por defecto con status "waiting_start". Al crear una Trivia el sistema
+    calcula la cantidad de rondas totales que tendrá (total_rounds), basándose en el numero de preguntas.
+    """
+
     # Verificar si las IDs de los usuarios existen
     user_ids = [ObjectId(user_id) for user_id in trivia.user_ids]
     existing_users = await users_collection.find({"_id": {"$in": user_ids}}).to_list(len(user_ids))
@@ -30,41 +36,59 @@ async def create_trivia(trivia: Trivia) -> TriviaInDB:
         raise HTTPException(status_code=400, detail="Algunas IDs de pregunta no existen en la base de datos")
 
     trivia_dict = trivia.dict()
-    # Las Trivias inician en el status: "waiting_start"
     trivia_dict["status"] = "waiting_start"
+    trivia_dict["total_rounds"] = len(trivia_dict["question_ids"])
     result = await trivia_collection.insert_one(trivia_dict)
     return TriviaInDB(id=str(result.inserted_id), **trivia_dict)
 
-"""
-Elimina una Trivia
-"""
+
 async def delete_trivia(trivia_id: str) -> Optional[TriviaInDB]:
+    """
+    Elimina una Trivia
+    """
     trivia = await trivia_collection.find_one_and_delete({"_id": ObjectId(trivia_id)})
     if trivia:
         return TriviaInDB(id=str(trivia["_id"]), **trivia)
     return None
 
-"""
-Retorna todas las Trivias cargadas en el sistema (independiente de su status)
-"""
-async def get_all_trivias() -> list:
+async def get_all_trivias() -> List[TriviaInDB]:
+    """
+    Retorna todas las Trivias
+    """
     trivias = await trivia_collection.find().to_list(100)
     return [TriviaInDB(id=str(trivia["_id"]), **trivia) for trivia in trivias]
 
-"""
-Permite a un Usuario unirse a una Trivia donde esta invitado (su id esta en los "user_ids" de la trivia).
-La invitacion solo se concreta si la Trivia esta en status "waiting_start".
-La invitacion solo se concreta si el usuario no esta en  "joined_users" de ninguna
-otra Trivia que este en status "waiting_start" o "playing".
-O sea, solo se permite jugar, o querer jugar, a UNA Trivia simultaneamente.
-El usuario es añadido a la lista de "joined_users" en caso de pasar las validaciones correspondientes.
-"""
-async def join_trivia(trivia_id: str, user_email: str) -> TriviaInDB:
+
+async def get_trivia(trivia_id: str, http: bool = True) -> Union[bool, TriviaInDB]:
+    """
+    Retorna una Trivia
+
+    Con "http=False" retornamos un False, en vez de una HTTPException, en caso de no encontrar una Trivia
+    """
+
+    trivia = await trivia_collection.find_one({"_id": ObjectId(trivia_id)})
+    if not trivia:
+        if http is True:
+            raise HTTPException(status_code=404, detail="Trivia no encontrada")
+        return False
+    return trivia
+
+async def join_trivia(trivia_id: str, user_email: str) -> TriviaProtected:
+    """
+    Agrega a un usuario que este en al lista de invitados (user_ids) de una Trivia, a la
+    lista de usuarios que han aceptado la invitación (joined_users).
+
+    Agregar un usuario a "joined_users" solo es posible cuando el usuario NO esta:
+    - En la "joined_users" de otra Trivia que este con status "playing" (en curso)
+    - En la "joined_users" de otra Trivia que esta esperando que todos los jugadores
+    confirmen la invitación (status "waiting_start")
+    O sea, un usuario solo puede aceptar simultáneamente 1 invitación a una trivia que
+    este por empezar o este en curso.
+    """
+
     # Buscar el usuario por correo electrónico
-    user = await users_collection.find_one({"email": user_email})
-    if not user:
-        raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    user_id = str(user["_id"])
+    user = await get_user_by_email(user_email)
+    user_id = user.id
 
     # Verificar si el usuario ya está unido a otra trivia activa o por comenzar
     conflicting_trivia = await trivia_collection.find_one({
@@ -79,9 +103,7 @@ async def join_trivia(trivia_id: str, user_email: str) -> TriviaInDB:
         )
 
     # Buscar la trivia por ID
-    trivia = await trivia_collection.find_one({"_id": ObjectId(trivia_id)})
-    if not trivia:
-        raise HTTPException(status_code=404, detail="Trivia no encontrada")
+    trivia = await get_trivia(trivia_id)
 
     # Verificar si el usuario es parte de `user_ids` (esta invitado)
     if user_id not in trivia["user_ids"]:
@@ -107,30 +129,33 @@ async def join_trivia(trivia_id: str, user_email: str) -> TriviaInDB:
         )
 
     trivia["joined_users"] = joined_users
-    # TODO: Remover la de la respues la lista de ids de las preguntas, puede ser una pista
-    return TriviaInDB(id=str(trivia["_id"]), **trivia)
+    return TriviaProtected(id=str(trivia["_id"]), **trivia)
 
-"""
-Permite a un usuario retirarse de una Trivia donde se haya unido.
-Esto solo es posible si la Trivia esta en status "waiting_start" y aun no ha partido.
-En caso contrario el usuario no se puede retirar y debe esperar que la Trivia termine.
-"""
+
 async def leave_trivia(trivia_id: str, user_email: str) -> str:
-    user = await users_collection.find_one({"email": user_email})
-    if not user:
-        raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    user_id = str(user["_id"])
+    """
+    Permite a un usuario retirarse de una Trivia donde se haya unido.
 
-    trivia = await trivia_collection.find_one({"_id": ObjectId(trivia_id)})
-    if not trivia:
-        raise HTTPException(status_code=404, detail="Trivia no encontrada")
+    Esto solo es posible si la Trivia esta en status "waiting_start" y aun no ha iniciado.
+    En caso contrario, el usuario no se puede retirar y debe esperar que la Trivia donde participa termine.
+    """
 
+    # Buscar el usuario por correo electrónico
+    user = await get_user_by_email(user_email)
+    user_id = user.id
+
+    # Buscar la trivia por ID
+    trivia = await get_trivia(trivia_id)
+
+    # Verificar si el usuario ha aceptado la invitación a la Trivia
     if user_id not in trivia["joined_users"]:
         raise HTTPException(status_code=400, detail="El usuario no está unido a esta trivia")
 
+    # Verificar si el estado de la trivia permite la acción
     if trivia["status"] != "waiting_start":
         raise HTTPException(status_code=400, detail="Solo puedes salir de trivias con estado 'waiting_start'")
 
+    # Remueve al usuario de la Trivia
     updated_trivia = await trivia_collection.find_one_and_update(
         {"_id": ObjectId(trivia_id)},
         {"$pull": {"joined_users": user_id}}
@@ -141,97 +166,109 @@ async def leave_trivia(trivia_id: str, user_email: str) -> str:
 
     return str(updated_trivia["_id"])
 
-# TODO: El modelo de retorno es dinamico
-# TODO: Este endpoint debe retornar el historia de la Trivia sin pistas al usuario
-# TODO: Usado para poder ver tanto donde puedo participar, la dinamica de una partida en curso
-# y los resultados de una partida historica
-async def get_trivia_details(trivia_id: str, user_email: str):
-    user = await users_collection.find_one({"email": user_email})
-    if not user:
-        raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    user_id = str(user["_id"])
 
-    trivia = await trivia_collection.find_one({"_id": ObjectId(trivia_id)})
-    if not trivia:
-        raise HTTPException(status_code=404, detail="Trivia no encontrada")
+async def get_trivia_details(trivia_id: str, user_email: str) -> Union[TriviaInDB, TriviaProtected]:
+    """
+    Retorna el detalle de una Trivia con la información de todas sus rondas (si es que existen).
 
+    Si el usuario no es admin, la función se asegura de ocultar información sensible, durante la progresión
+    de una ronda, para evitar trampas.
+    """
+
+    # Buscar el usuario por correo electrónico
+    user = await get_user_by_email(user_email)
+    user_id = user.id
+
+    # Buscar la trivia por ID
+    trivia = await get_trivia(trivia_id)
+
+    # Verificar si el usuario es parte de la Trivia
     if user_id not in trivia["user_ids"]:
         raise HTTPException(status_code=403, detail="El usuario no está incluido en esta trivia")
 
-    # TODO: Esto debe ser dinamico dependiendo si es admin o usuario y el estado del juego
-    # if user["role"] == "admin":
+    # Verifica la cantidad de información a retornar dependiendo del rol del usuario
+    if user.role == "player":
+        for round_item in trivia.get("rounds", []):
+            if "round_score" not in round_item:
+                for response in round_item.get("responses", []):
+                    if response["user_id"] != user_id:
+                        response["answer_index"] = -1
+        return TriviaProtected(id=str(trivia["_id"]), **trivia)
+
     return TriviaInDB(id=str(trivia["_id"]), **trivia)
 
-    # if trivia["status"] == "waiting_start":
-    #     return TriviaInvitation(id=str(trivia["_id"]), **trivia)
+async def get_question_for_trivia(trivia_id: str, user_email: str) -> DisplayedQuestion:
+    """
+    Retorna la Pregunta de la ronda activa de una Trivia que debe ser desplegada al usuario.
 
-async def get_question_for_trivia(trivia_id: str, user_email: str) -> QuestionPlayer:
-    user = await users_collection.find_one({"email": user_email})
-    if not user:
-        raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    user_id = str(user["_id"])
+    El retorno incluye diversa meta-data de la partida de Trivia (numero ronda, tiempo restante...)
+    El sistema identifica la pregunta "activa" de una Trivia, validando que ronda aun no
+    tiene el campo "round_score" (el cual solo se crea una vez la ronda ha terminado y se han
+    calculado los puntos respectivos)
+    """
 
-    trivia = await trivia_collection.find_one({"_id": ObjectId(trivia_id)})
-    if not trivia:
-        raise HTTPException(status_code=404, detail="Trivia no encontrada")
+    # Buscar el usuario por correo electrónico
+    user = await get_user_by_email(user_email)
+    user_id = user.id
 
+    # Buscar la trivia por ID
+    trivia = await get_trivia(trivia_id)
+
+    # Verificar si el usuario es parte de la Trivia
     if user_id not in trivia["user_ids"]:
         raise HTTPException(status_code=403, detail="El usuario no está incluido en esta Trivia")
 
+    # Verificar si el estado de la trivia permite la acción
     if trivia["status"] != "playing":
         raise HTTPException(status_code=400, detail="Esta Trivia no esta activa")
 
     # La pregunta que corresponde mostrar al usuario es aquella que aun no tiene aun el campo "round_score"
     active_question = next((q for q in trivia["rounds"] if "round_score" not in q), None)
-
     if not active_question:
         raise HTTPException(status_code=400, detail="No hay una pregunta activa en esta Trivia")
 
     # Verificar si el usuario ya respondió la pregunta
-    answered_status = "not answered"
+    answered_status = QUESTION_STATUS[1]
     for response in active_question.get("responses", []):
         if response["user_id"] == user_id:
-            answered_status = "answered"
+            answered_status = QUESTION_STATUS[0]
             break
 
-    # Obtener el tiempo restante para la ronda
+    # Calculamos el tiempo restante de la ronda
     current_time = int(time.time())
     round_endtime_timestamp = active_question["round_endtime"].timestamp()
-    round_timeleft = round(max(0, round_endtime_timestamp - current_time))
+    remaining_time = round(max(0, round_endtime_timestamp - current_time))
 
-    # Calcular el total de rondas
-    total_rounds = len(trivia["question_ids"])
-
-    # Formatear la respuesta con los detalles de la pregunta activa
-    return QuestionPlayer(
-        id=active_question["id"],
-        question=active_question["question"],
-        possible_answers=active_question["possible_answers"],
-        difficulty=active_question["difficulty"],
-        round_count=active_question["round_count"],
-        round_timeleft=round_timeleft,
+    return DisplayedQuestion(
+        remaining_time=remaining_time,
         answered=answered_status,
-        total_rounds=total_rounds
+        total_rounds=trivia["total_rounds"],
+        **active_question
     )
 
+async def submit_answer(trivia_id: str, question_id: str, answer_index: int, user_email: str) -> str:
+    """
+    Registra la respuesta del usuario, ante una determinada pregunta de una ronda.
 
-async def submit_answer(trivia_id: str, question_id: str, answer_index: int, user_email: str):
+    La respuesta solo es aceptada si esta dentro del rango de tiempo valido de la ronda.
+    El usuario no pueda cambiar su respuesta una vez registrada una.
+    El sistema identifica la pregunta "activa" de una Trivia, validando que ronda aun no
+    tiene el campo "round_score" (el cual solo se crea una vez la ronda ha terminado y se han
+    calculado los puntos respectivos)
+    """
+
     # Verificar que el usuario exista
-    user = await users_collection.find_one({"email": user_email})
-    if not user:
-        raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    user_id = str(user["_id"])
+    user = await get_user_by_email(user_email)
+    user_id = user.id
 
     # Verificar que la trivia exista
-    trivia = await trivia_collection.find_one({"_id": ObjectId(trivia_id)})
-    if not trivia:
-        raise HTTPException(status_code=404, detail="Trivia no encontrada")
+    trivia = await get_trivia(trivia_id)
 
     # Verificar que el usuario esté en la trivia
     if user_id not in trivia["user_ids"]:
         raise HTTPException(status_code=403, detail="El usuario no está incluido en esta Trivia")
 
-    # Verificar que la trivia esté en estado "playing"
+    # Verificar si el estado de la trivia permite la acción
     if trivia["status"] != "playing":
         raise HTTPException(status_code=400, detail="Esta Trivia no está activa")
 
@@ -259,27 +296,17 @@ async def submit_answer(trivia_id: str, question_id: str, answer_index: int, use
             detail=f"El índice de respuesta debe estar entre 1 y {len(possible_answers)}"
         )
 
+    # Guarda respuesta
     response_data = {
         "user_id": user_id,
         "answer_index": answer_index,
         "submitted_at": current_time
     }
-
     result = await trivia_collection.update_one(
         {"_id": ObjectId(trivia_id), "rounds.id": question_id},
         {"$push": {"rounds.$.responses": response_data}}
     )
-
     if result.modified_count == 0:
         raise HTTPException(status_code=400, detail="No se pudo registrar la respuesta")
 
-    return {
-        "message": "Respuesta enviada correctamente"
-    }
-
-async def get_trivia(trivia_id: str) -> Union[bool, TriviaInDB]:
-    trivia = await trivia_collection.find_one({"_id": ObjectId(trivia_id)})
-    if not trivia:
-        print("Trivia con id {trivia_id} no encontrada.")
-        return False
-    return trivia
+    return str(answer_index)

@@ -1,19 +1,58 @@
-from pydantic import BaseModel, EmailStr
-from typing import Optional
-
-# TODO: Validador al crear usuario
+from pydantic import BaseModel, EmailStr, Field
+from typing import Optional, Literal
+from app.core.constants import ROLES
 
 class UserBase(BaseModel):
-    name: str
-    email: EmailStr
-    role: Optional[str] = "player"
+    name: str = Field(
+        ...,
+        description="El nombre completo del usuario.",
+        example="GuitarHero"
+    )
+    email: EmailStr = Field(
+        ...,
+        description="La dirección de correo electrónico del usuario.",
+        example="guitarhero@email.com"
+    )
+    role: Optional[Literal[tuple(ROLES)]] = Field(
+        "player",
+        description="El rol del usuario dentro de la aplicación. Puede ser 'player' (jugador)\
+             o 'admin' (administrador). El valor por defecto es 'player'.",
+        example="player"
+    )
 
+
+""" Dado el contexto del proyecto, no aplicamos ninguna restricción en complejidad de password"""
 class UserCreate(UserBase):
-    password: str
+    password: str = Field(
+        ...,
+        description="La contraseña del usuario.",
+        example="mypassword123"
+    )
 
-class UserResponse(UserBase):
-    id: str
+class UserResponseInDB(UserBase):
+    id: str = Field(
+        ...,
+        description="El identificador único del usuario.",
+        example="60b5fbd5e4b0f35c7b6b8e5c"
+    )
 
 class UserFull(UserBase):
-    id: str
-    password: str
+    id: str = Field(
+        ...,
+        description="El identificador único del usuario.",
+        example="60b5fbd5e4b0f35c7b6b8e5c"
+    )
+    password: str = Field(
+        ...,
+        description="La contraseña con hash",
+    )
+
+class UserToken(BaseModel):
+    access_token: str = Field(
+        ...,
+        description="Token de acceso",
+    )
+    token_type: str = Field(
+        ...,
+        description="Tipo de Token",
+    )

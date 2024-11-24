@@ -26,7 +26,7 @@ async def test_users_part_1(client):
 
     for user in users:
         response = await client.post("/users", json=user.model_dump())
-        assert response.status_code == 200
+        assert response.status_code == 201
         response_data = response.json()
         assert response_data["email"] == user.email
         assert response_data["role"] == user.role
@@ -42,7 +42,7 @@ async def test_admin_login(client):
         "username": "admin@example.com",
         "password": "adminpassword"
     }
-    response = await client.post("/token", data=login_data)
+    response = await client.post("/login", data=login_data)
 
     assert response.status_code == 200
     response_data = response.json()
@@ -130,7 +130,6 @@ async def test_questions(client, access_token):
 
     return question_ids
 
-# TODO: Añadir usar el endpoint para ver detalle de trivia y asegurar el ok
 async def test_trivia_creation(client, access_token, questions, users):
     # Crear trivia invitando a los 3 usuarios
     trivia_data = Trivia(
@@ -167,5 +166,12 @@ async def test_general_1():
         await test_trivia_creation(client, access_token, question_ids, users_ids)
 
 # Ejecutar la prueba
+# TODO: 
+# Login usuario normal
+# Bloqueo por falta de autorizacion
+# Eliminar pregunta
+# Eliminar trivia
+# Detalle de trivia como admin (son 3 etapas distintas)
+# Bloqueo de otras rutas con previlegio de usuarios normales
 if __name__ == "__main__":
     asyncio.run(test_general_1())

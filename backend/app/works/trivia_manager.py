@@ -4,9 +4,10 @@ from app.core.task_manager import TaskManager
 from motor.motor_asyncio import AsyncIOMotorCollection
 from app.core.config import db
 from bson import ObjectId
-from app.services.question_service import get_question_by_id
+from app.services.question_service import get_question
 from app.services.trivia_service import get_trivia
 from typing import Union
+from random import shuffle
 
 task_manager = TaskManager()
 trivia_collection: AsyncIOMotorCollection = db["trivias"]
@@ -36,7 +37,7 @@ async def get_next_question_id(trivia_id: str) -> Union[bool, str]:
     que debe ser mostrada a los jugadores.
     En caso que todas las preguntas ya fueron utilizadas, retorna False
     """
-    trivia = await get_trivia(trivia_id)
+    trivia = await get_trivia(trivia_id, False)
     question_ids = set(trivia.get("question_ids", []))
     round_question_ids = set([question['id'] for question in trivia.get("rounds", [])])
     available_question_ids = list(question_ids - round_question_ids)
@@ -44,10 +45,9 @@ async def get_next_question_id(trivia_id: str) -> Union[bool, str]:
         return False
     return available_question_ids[0]
 
-# TODO: Aqui va la logica de una Trivia, o sea, el manejo de las rondas, preguntas, puntajes...
 async def trivia_worker(trivia_id: str) -> None:
     print(f"Trabajando en la trivia {trivia_id}", flush=True)
-    trivia = await get_trivia(trivia_id)
+    trivia = await get_trivia(trivia_id, False)
 
     round_count = 1
     while True:
@@ -56,7 +56,7 @@ async def trivia_worker(trivia_id: str) -> None:
         if question_id is False:
             break
         print(f"Pregunta seleccionada: {question_id}", flush=True)
-        question = await get_question_by_id(question_id)
+        question = await get_question(question_id)
         if not question:
             print(f"No se encontró la pregunta con ID {question_id}", flush=True)
             continue
@@ -68,9 +68,15 @@ async def trivia_worker(trivia_id: str) -> None:
 
         #Añade la informacion de la ronda a la trivia
         round_data = question.dict()
+
+        # Crear la lista de posibles respuestas (distractores + respuesta correcta)
+        possible_answers = round_data["distractors"] + [round_data["answer"]]
+        shuffle(possible_answers)
+        round_data["possible_answers"] = possible_answers
+        round_data["correct_answer_index"] = possible_answers.index(round_data["answer"])
         round_data["round_endtime"] = round_endtime
         round_data["round_count"] = round_count
-        #TODO: Pasar el rounds a un modelo
+
         await trivia_collection.update_one(
             {"_id": ObjectId(trivia_id)},
             {
@@ -86,7 +92,7 @@ async def trivia_worker(trivia_id: str) -> None:
         #Revelar respuesta correcta
         #Asignar puntaje de ronda a cada jugador (todos los que no responden obtienen 0 puntos)
 
-        trivia = await get_trivia(trivia_id)
+        trivia = await get_trivia(trivia_id, False)
 
         # Obtener la lista de todos los jugadores de la trivia
         all_user_ids = set(trivia.get("user_ids", []))
@@ -140,7 +146,7 @@ async def trivia_worker(trivia_id: str) -> None:
             round_count += 1
 
     #Calcular el puntaje de final de cada jugador
-    trivia = await get_trivia(trivia_id)
+    trivia = await get_trivia(trivia_id, False)
     # Crear un diccionario para almacenar los puntajes finales
     final_scores = {}
 
@@ -159,7 +165,6 @@ async def trivia_worker(trivia_id: str) -> None:
     final_scores_list = [{"user_id": user_id, "score": score} for user_id, score in final_scores.items()]
 
     # Actualizar el documento en la base de datos
-    # TODO: Pasar juego a finalizado
     await trivia_collection.update_one(
         {"_id": ObjectId(trivia_id)},
         {"$set": {"final_score": final_scores_list, "status": "ended"}}

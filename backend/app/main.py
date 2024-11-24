@@ -5,14 +5,14 @@ from app.routes.question_routes import router as question_routes
 from app.routes.trivia_routes import router as trivia_routes
 
 # FUTURE: Si todos los jugadores responden una ronda y aun hay tiempo, la ronda termina y pasa a la siguiente
+# TODO: Editar user_ids por algo mas similar a "iinvitaciones"
 
 app = FastAPI(
-    title="My API",
-    description="API para la gestión de usuarios y autenticación.",
-    version="1.0.0",
+    title="TalaTrivia API",
+    description="API de TalaTrivia, el mejor juego del mundo mundial",
+    version="0.4.2",
 )
 
-# Registro de rutas
 app.include_router(user_router)
 app.include_router(question_routes)
 app.include_router(trivia_routes)
@@ -27,4 +27,4 @@ async def shutdown_event():
 
 @app.get("/")
 async def root():
-    return {"message": "Welcome to the API"}
+    return {"message": "Bienvenido a la API de TalaTrivia!"}

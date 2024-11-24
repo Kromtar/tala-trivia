@@ -11,5 +11,5 @@ EXPOSE 8000
 
 ENV PYTHONPATH=/app
 
-#TODO: Quitra reload en prod
+# Dado el contexto del proyecto no se ha considerado una rutina de inicio en modo producción
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
