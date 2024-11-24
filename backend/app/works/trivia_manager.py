@@ -45,112 +45,94 @@ async def get_next_question_id(trivia_id: str) -> Union[bool, str]:
         return False
     return available_question_ids[0]
 
-async def trivia_worker(trivia_id: str) -> None:
-    print(f"Trabajando en la trivia {trivia_id}", flush=True)
-    trivia = await get_trivia(trivia_id, False)
+async def set_next_question_in_trivia(trivia, round_count) -> Union[bool, int]:
+    """
+    Prepara y dispone una nueva pregunta para los jugadores de una Trivia
 
-    round_count = 1
-    while True:
-        #Mientas existan preguntas sin usar
-        question_id = await get_next_question_id(trivia_id)
-        if question_id is False:
-            break
-        print(f"Pregunta seleccionada: {question_id}", flush=True)
-        question = await get_question(question_id)
-        if not question:
-            print(f"No se encontró la pregunta con ID {question_id}", flush=True)
+    Se calcula el tiempo limite para responder la pregunta
+    Se combinan y barajan las posibles respuestas (distractores y correcta)
+    Si no quedan mas preguntas para la Trivia, retornamos False
+    """
+    question_id = await get_next_question_id(trivia["_id"])
+    if question_id is False:
+        return False
+    question = await get_question(question_id)
+
+    # Calcula en que momento debe terminar esta ronda
+    current_time = datetime.utcnow()
+    round_lapse = int(trivia["round_time_sec"])
+    round_endtime = current_time + timedelta(seconds=round_lapse)
+
+    # Añade la pregunta seleccionada a la ronda de la Trivia
+    round_data = question.dict()
+    possible_answers = round_data["distractors"] + [round_data["answer"]]
+    shuffle(possible_answers)
+    round_data["possible_answers"] = possible_answers
+    round_data["correct_answer_index"] = possible_answers.index(round_data["answer"])
+    round_data["round_endtime"] = round_endtime
+    round_data["round_count"] = round_count
+
+    await trivia_collection.update_one(
+        {"_id": ObjectId(trivia["_id"])},
+        {"$push": {"rounds": round_data}}
+    )
+
+    return round_lapse
+
+async def calculate_round_points(trivia_id) -> None:
+    """
+    Calcula los puntos de cada jugador al finalizar una ronda.
+
+    Solo calcula los puntos de rondas que aun no estén calculadas.
+    Asigna 0 puntos a jugadores que no respondieron.
+    Deja disponible, en texto, la respuesta correcta de la ronda.
+    """
+
+    trivia = await get_trivia(trivia_id, False)
+    all_user_ids = set(trivia.get("user_ids_invitations", []))
+    for round_data in trivia.get("rounds", []):
+        if "round_score" in round_data:
             continue
-        
-        #Calcula en que momento debe terminar la ronda
-        current_time = datetime.utcnow()
-        round_lapse = int(trivia["round_time_sec"])
-        round_endtime = current_time + timedelta(seconds=round_lapse)
+        round_score = []
 
-        #Añade la informacion de la ronda a la trivia
-        round_data = question.dict()
+        correct_answer_index = round_data["correct_answer_index"]
+        difficulty = round_data["difficulty"]
+        responded_user_ids = set()
+        for response in round_data.get("responses", []):
+            user_id = response["user_id"]
+            responded_user_ids.add(user_id)
+            answer_index = response["answer_index"]
+            score = difficulty if (answer_index - 1) == correct_answer_index else 0
+            round_score.append({"user_id": user_id, "score": score})
 
-        # Crear la lista de posibles respuestas (distractores + respuesta correcta)
-        possible_answers = round_data["distractors"] + [round_data["answer"]]
-        shuffle(possible_answers)
-        round_data["possible_answers"] = possible_answers
-        round_data["correct_answer_index"] = possible_answers.index(round_data["answer"])
-        round_data["round_endtime"] = round_endtime
-        round_data["round_count"] = round_count
+        # Identificar usuarios que no respondieron y asigna 0 puntos
+        non_responded_user_ids = all_user_ids - responded_user_ids
+        for user_id in non_responded_user_ids:
+            round_score.append({"user_id": user_id, "score": 0})
 
-        await trivia_collection.update_one(
-            {"_id": ObjectId(trivia_id)},
-            {
-                "$push": {"rounds": round_data}
-            }
+        # Deja disponible la respuesta correcta (en texto) una vez calculados los puntos de la ronda
+        correct_answer_index = round_data.get("correct_answer_index")
+        possible_answers = round_data.get("possible_answers", [])
+        if correct_answer_index is None or correct_answer_index >= len(possible_answers):
+            raise ValueError(f"Índice de respuesta correcta inválido para el round {round_data['id']}")
+        correct_answer_text = possible_answers[correct_answer_index]
+
+        # Actualiza información de la ronda
+        result = await trivia_collection.update_one(
+            {"_id": ObjectId(trivia_id), "rounds.id": round_data["id"]},
+            {"$set": {"rounds.$.round_score": round_score, "rounds.$.correct_answer": correct_answer_text}}
         )
+        if result.modified_count == 0:
+            raise ValueError(f"No se pudo actualizar el puntaje para el round {round_data['id']}")
 
-        #Esperamos que se cumpla el tiempo de la ronda
-        print(f"Esperando fin de ronda en {round_lapse}", flush=True)
-        await asyncio.sleep(round_lapse)
+async def calculate_final_points(trivia_id) -> None:
+    """
+    Calcula los puntos finales de cada jugador, dado los puntos de cada ronda.
+    Pasa la Trivia al estado finalizado "ended"
+    """
 
-        #Recuperar las respuestas de cada jugador y compararlas con la real
-        #Revelar respuesta correcta
-        #Asignar puntaje de ronda a cada jugador (todos los que no responden obtienen 0 puntos)
-
-        trivia = await get_trivia(trivia_id, False)
-
-        # Obtener la lista de todos los jugadores de la trivia
-        all_user_ids = set(trivia.get("user_ids_invitations", []))
-
-        # Recorrer los rounds y procesar aquellos que no tengan la propiedad "round_score"
-        for round_data in trivia.get("rounds", []):
-            if "round_score" in round_data:
-                continue  # Si ya tiene round_score, lo ignoramos
-
-            # Inicializar el puntaje para este round
-            round_score = []
-
-            # Obtener el índice de la respuesta correcta y la dificultad
-            correct_answer_index = round_data["correct_answer_index"]
-            difficulty = round_data["difficulty"]
-
-            # Calcular puntajes según las respuestas de los usuarios
-            responded_user_ids = set()
-            for response in round_data.get("responses", []):
-                user_id = response["user_id"]
-                responded_user_ids.add(user_id)
-                answer_index = response["answer_index"]
-
-                # Asignar puntaje si la respuesta es correcta
-                score = difficulty if (answer_index - 1) == correct_answer_index else 0
-
-                # Añadir el puntaje del usuario al round_score
-                round_score.append({"user_id": user_id, "score": score})
-           
-            # Identificar usuarios que no respondieron
-            non_responded_user_ids = all_user_ids - responded_user_ids
-            for user_id in non_responded_user_ids:
-                round_score.append({"user_id": user_id, "score": 0})
-
-            # Obtener respuestas y la respuesta correcta
-            correct_answer_index = round_data.get("correct_answer_index")
-            possible_answers = round_data.get("possible_answers", [])
-            if correct_answer_index is None or correct_answer_index >= len(possible_answers):
-                raise ValueError(f"Índice de respuesta correcta inválido para el round {round_data['id']}")
-            correct_answer_text = possible_answers[correct_answer_index]
-
-            # Actualizar la base de datos con el puntaje calculado
-            result = await trivia_collection.update_one(
-                {"_id": ObjectId(trivia_id), "rounds.id": round_data["id"]},
-                {"$set": {"rounds.$.round_score": round_score, "rounds.$.correct_answer": correct_answer_text}}
-            )
-
-            if result.modified_count == 0:
-                raise ValueError(f"No se pudo actualizar el puntaje para el round {round_data['id']}")
-
-            round_count += 1
-
-    #Calcular el puntaje de final de cada jugador
     trivia = await get_trivia(trivia_id, False)
-    # Crear un diccionario para almacenar los puntajes finales
     final_scores = {}
-
-    # Recorrer los rounds y acumular los puntajes
     for round_data in trivia.get("rounds", []):
         for score_entry in round_data.get("round_score", []):
             user_id = score_entry["user_id"]
@@ -160,16 +142,35 @@ async def trivia_worker(trivia_id: str) -> None:
                 final_scores[user_id] += score
             else:
                 final_scores[user_id] = score
-    
-    # Formatear el resultado como una lista de diccionarios
-    final_scores_list = [{"user_id": user_id, "score": score} for user_id, score in final_scores.items()]
 
-    # Actualizar el documento en la base de datos
+    final_scores_list = [{"user_id": user_id, "score": score} for user_id, score in final_scores.items()]
     await trivia_collection.update_one(
         {"_id": ObjectId(trivia_id)},
         {"$set": {"final_score": final_scores_list, "status": "ended"}}
-        #{"$set": {"final_score": final_scores_list}}
     )
 
-    #Pasar la partida a terminada
+async def trivia_worker(trivia_id: str) -> None:
+    """
+    Ciclo principal para gestionar las rondas de una Trivia
+    Administra tiempos de cada ronda y los puntos asociados.
+    """
+
+    print(f"Trabajando en la trivia {trivia_id}", flush=True)
+
+    trivia = await get_trivia(trivia_id, False)
+    round_count = 1
+    while True:
+        # Procesa una nueva pregunta para los jugadores de la Trivia
+        round_lapse = await set_next_question_in_trivia(trivia, round_count)
+        if round_lapse is False:
+            break
+        # Esperamos el lapso de la ronda antes de cerrarla y pasar a la proxima
+        await asyncio.sleep(round_lapse)
+        # Calcula los puntos de cada jugador de la ronda recién finalizada
+        await calculate_round_points(trivia_id)
+        round_count += 1
+
+    # Calcula puntos finales
+    await calculate_final_points(trivia_id)
+
     print(f"Trivia {trivia_id} terminada.", flush=True)
