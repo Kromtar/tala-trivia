@@ -53,7 +53,6 @@ async def test_users_part_2(client, access_token, users):
     Valida la creación de los usuarios mediante el endpoint GET
     Retorna las IDs de los usuarios de role player
     """
-    # Validar que los usuarios fueron creados correctamente usando el endpoint GET
     response = await client.get("/users", headers={"Authorization": f"Bearer {access_token}"})
     assert response.status_code == 200
     created_users = response.json()
@@ -67,7 +66,7 @@ async def test_users_part_2(client, access_token, users):
         assert created_user["name"] == user.name, f"El nombre de {user.email} es incorrecto"
         if created_user["role"] == "player":
             users_ids.append(created_user["id"])
- 
+
     return users_ids
 
 async def test_questions(client, access_token):
@@ -121,7 +120,6 @@ async def test_questions(client, access_token):
     created_questions = response.json()
     assert len(created_questions) == len(questions), "No se crearon todas las preguntas"
 
-    # Verificar que las preguntas devueltas coinciden con las creadas
     for question in questions:
         created_question = next(q for q in created_questions if q["question"] == question.question)
         assert created_question["question"] == question.question
@@ -131,13 +129,16 @@ async def test_questions(client, access_token):
     return question_ids
 
 async def test_trivia_creation(client, access_token, questions, users):
-    # Crear trivia invitando a los 3 usuarios
+    """
+    Crea y valida la creación de una Trivia
+    """
+
     trivia_data = Trivia(
         name="Trivia de Ejemplo",
         description="Trivia creada para prueba",
-        question_ids=questions,  # Usamos los IDs de las preguntas creadas
-        user_ids=users,  # Invitamos a los 3 jugadores
-        round_time_sec=60
+        question_ids=questions,
+        user_ids=users,
+        round_time_sec=10
     )
 
     response = await client.post(
@@ -146,12 +147,26 @@ async def test_trivia_creation(client, access_token, questions, users):
         headers={"Authorization": f"Bearer {access_token}"}
     )
 
-    # Verificar que la trivia se haya creado correctamente
     assert response.status_code == 201, f"Error al crear la trivia: {response.text}"
     response_data = response.json()
     assert response_data["name"] == trivia_data.name
     assert response_data["description"] == trivia_data.description
     assert sorted(response_data["user_ids"]) == sorted(users)
+
+    get_response = await client.get(
+        f"/trivias/{response_data['id']}",
+        headers={"Authorization": f"Bearer {access_token}"}
+    )
+
+    assert get_response.status_code == 200, f"Error al obtener la trivia: {get_response.text}"
+    get_response_data = get_response.json()
+
+    assert get_response_data["name"] == trivia_data.name
+    assert get_response_data["description"] == trivia_data.description
+    assert sorted(get_response_data["user_ids"]) == sorted(users)
+    assert sorted(get_response_data["question_ids"]) == sorted(questions)
+
+    return get_response_data["id"]
 
 async def test_general_1():
     """
@@ -163,15 +178,15 @@ async def test_general_1():
         access_token = await test_admin_login(client)
         users_ids = await test_users_part_2(client, access_token, users)
         question_ids = await test_questions(client, access_token)
-        await test_trivia_creation(client, access_token, question_ids, users_ids)
+        trivia_id = await test_trivia_creation(client, access_token, question_ids, users_ids)
 
-# Ejecutar la prueba
-# TODO: 
-# Login usuario normal
-# Bloqueo por falta de autorizacion
-# Eliminar pregunta
-# Eliminar trivia
-# Detalle de trivia como admin (son 3 etapas distintas)
-# Bloqueo de otras rutas con previlegio de usuarios normales
+        return {
+            "users": users,
+            "admin_access_token": access_token,
+            "users_ids": users_ids,
+            "question_ids": question_ids,
+            "trivia_id": trivia_id
+        }
+
 if __name__ == "__main__":
     asyncio.run(test_general_1())

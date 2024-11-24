@@ -182,8 +182,8 @@ async def get_trivia_details(trivia_id: str, user_email: str) -> Union[TriviaInD
     # Buscar la trivia por ID
     trivia = await get_trivia(trivia_id)
 
-    # Verificar si el usuario es parte de la Trivia
-    if user_id not in trivia["user_ids"]:
+    # Si no es admin, verificar si el usuario es parte de la Trivia
+    if user.role != 'admin' and user_id not in trivia["user_ids"]:
         raise HTTPException(status_code=403, detail="El usuario no está incluido en esta trivia")
 
     # Verifica la cantidad de información a retornar dependiendo del rol del usuario
@@ -214,8 +214,8 @@ async def get_question_for_trivia(trivia_id: str, user_email: str) -> DisplayedQ
     # Buscar la trivia por ID
     trivia = await get_trivia(trivia_id)
 
-    # Verificar si el usuario es parte de la Trivia
-    if user_id not in trivia["user_ids"]:
+    # Si no es admin, verificar si el usuario es parte de la Trivia
+    if user.role != 'admin' and user_id not in trivia["user_ids"]:
         raise HTTPException(status_code=403, detail="El usuario no está incluido en esta Trivia")
 
     # Verificar si el estado de la trivia permite la acción
