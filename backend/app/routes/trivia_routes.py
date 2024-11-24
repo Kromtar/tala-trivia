@@ -65,7 +65,7 @@ async def get_all_trivias_endpoint(current_role: dict = Depends(admin_required))
     "/trivias/{trivia_id}/join",
     response_model=TriviaProtected,
     summary="Unirse a una Trivia donde el usuario esta invitado",
-    description="Permite a un usuario unirse a una Trivia si está listado en los invitados (user_ids). \
+    description="Permite a un usuario unirse a una Trivia si está listado en los invitados (user_ids_invitations). \
                 Un usuario solo puede aceptar una invitación y jugar UNA Trivia en forma simultanea.",
     tags=["Trivias"]
 )

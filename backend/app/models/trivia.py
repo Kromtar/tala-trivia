@@ -19,7 +19,7 @@ class Trivia(BaseModel):
         description="Una lista de identificadores de las preguntas asociadas a esta Trivia.",
         example=["640f92a18b545c7b5f34f4b0", "640f92a18b545c7b5f34f4b1"]
     )
-    user_ids: conlist(str, min_length=1) = Field(
+    user_ids_invitations: conlist(str, min_length=1) = Field(
         ...,
         description="Una lista de identificadores de los usuarios que están invitados a participar en la Trivia.",
         example=["640f92a18b545c7b5f34f4b0", "640f92a18b545c7b5f34f4b1", "640f92a18b545c7b5f34f4b0"]
@@ -147,7 +147,7 @@ class TriviaProtected(BaseModel):
         description="Una descripción breve de la Trivia, explicando su temática o reglas.",
         example="Trivia sobre capitales de países y geografía mundial."
     )
-    user_ids: conlist(str, min_length=1) = Field(
+    user_ids_invitations: conlist(str, min_length=1) = Field(
         ...,
         description="Una lista de identificadores de los usuarios que están invitados a participar en la Trivia.",
         example=["640f92a18b545c7b5f34f4b0", "640f92a18b545c7b5f34f4b1", "640f92a18b545c7b5f34f4b0"]

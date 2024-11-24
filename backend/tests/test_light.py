@@ -137,7 +137,7 @@ async def test_trivia_creation(client, access_token, questions, users):
         name="Trivia de Ejemplo",
         description="Trivia creada para prueba",
         question_ids=questions,
-        user_ids=users,
+        user_ids_invitations=users,
         round_time_sec=10
     )
 
@@ -151,7 +151,7 @@ async def test_trivia_creation(client, access_token, questions, users):
     response_data = response.json()
     assert response_data["name"] == trivia_data.name
     assert response_data["description"] == trivia_data.description
-    assert sorted(response_data["user_ids"]) == sorted(users)
+    assert sorted(response_data["user_ids_invitations"]) == sorted(users)
 
     get_response = await client.get(
         f"/trivias/{response_data['id']}",
@@ -163,7 +163,7 @@ async def test_trivia_creation(client, access_token, questions, users):
 
     assert get_response_data["name"] == trivia_data.name
     assert get_response_data["description"] == trivia_data.description
-    assert sorted(get_response_data["user_ids"]) == sorted(users)
+    assert sorted(get_response_data["user_ids_invitations"]) == sorted(users)
     assert sorted(get_response_data["question_ids"]) == sorted(questions)
 
     return get_response_data["id"]

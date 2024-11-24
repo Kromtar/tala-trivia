@@ -1,5 +1,4 @@
 import os
-# TODO: asegurar de usar en todas partes esto y validar
 TRIVIA_STATUS = ["ended", "playing", "waiting_start"]
 QUESTION_STATUS = ["answered", "not answer"]
 ROLES = ["player", "admin"]

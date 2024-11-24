@@ -13,16 +13,16 @@ trivia_collection: AsyncIOMotorCollection = db["trivias"]
 async def check_trivias() -> None:
     """
     Verifica, de forma cíclica, si el juego de una trivia cumple las condiciones para iniciar.
-    Las condiciones es que todos los jugadores invitados (user_ids) estén unidos a la trivia (joined_users).
+    Las condiciones es que todos los jugadores invitados (user_ids_invitations) estén unidos a la trivia (joined_users).
     """
     is_running = True
     while is_running:
         try:
             trivias = await trivia_collection.find({"status": "waiting_start"}).to_list(length=None)
             for trivia in trivias:
-                user_ids = set(trivia.get("user_ids", []))
+                user_ids_invitations = set(trivia.get("user_ids_invitations", []))
                 joined_users = set(trivia.get("joined_users", []))
-                if user_ids == joined_users:
+                if user_ids_invitations == joined_users:
                     await start_trivia(trivia['_id'])
             await asyncio.sleep(TRIVIA_CHECK_SEC_INTERVAL)
         except asyncio.CancelledError:

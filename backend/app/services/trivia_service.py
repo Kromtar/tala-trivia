@@ -14,8 +14,6 @@ trivia_collection: AsyncIOMotorCollection = db["trivias"]
 users_collection: AsyncIOMotorCollection = db["users"]
 questions_collection: AsyncIOMotorCollection = db["questions"]
 
-
-# TODO: Invitar usando emails
 async def create_trivia(trivia: Trivia) -> TriviaInDB:
     """
     Crea una nueva Trivia compuesta de una serie de Questions y donde se invitan una serie de Usuarios
@@ -24,9 +22,9 @@ async def create_trivia(trivia: Trivia) -> TriviaInDB:
     """
 
     # Verificar si las IDs de los usuarios existen
-    user_ids = [ObjectId(user_id) for user_id in trivia.user_ids]
-    existing_users = await users_collection.find({"_id": {"$in": user_ids}}).to_list(len(user_ids))
-    if len(existing_users) != len(user_ids):
+    user_ids_invitations = [ObjectId(user_id) for user_id in trivia.user_ids_invitations]
+    existing_users = await users_collection.find({"_id": {"$in": user_ids_invitations}}).to_list(len(user_ids_invitations))
+    if len(existing_users) != len(user_ids_invitations):
         raise HTTPException(status_code=400, detail="Algunas IDs de usuario no existen en la base de datos")
 
     # Verificar si las IDs de las preguntas existen
@@ -75,7 +73,7 @@ async def get_trivia(trivia_id: str, http: bool = True) -> Union[bool, TriviaInD
 
 async def join_trivia(trivia_id: str, user_email: str) -> TriviaProtected:
     """
-    Agrega a un usuario que este en al lista de invitados (user_ids) de una Trivia, a la
+    Agrega a un usuario que este en al lista de invitados (user_ids_invitations) de una Trivia, a la
     lista de usuarios que han aceptado la invitación (joined_users).
 
     Agregar un usuario a "joined_users" solo es posible cuando el usuario NO esta:
@@ -105,8 +103,8 @@ async def join_trivia(trivia_id: str, user_email: str) -> TriviaProtected:
     # Buscar la trivia por ID
     trivia = await get_trivia(trivia_id)
 
-    # Verificar si el usuario es parte de `user_ids` (esta invitado)
-    if user_id not in trivia["user_ids"]:
+    # Verificar si el usuario es parte de `user_ids_invitations` (esta invitado)
+    if user_id not in trivia["user_ids_invitations"]:
         raise HTTPException(
             status_code=403,
             detail="El usuario no esta invitado a esta Trivia"
@@ -183,7 +181,7 @@ async def get_trivia_details(trivia_id: str, user_email: str) -> Union[TriviaInD
     trivia = await get_trivia(trivia_id)
 
     # Si no es admin, verificar si el usuario es parte de la Trivia
-    if user.role != 'admin' and user_id not in trivia["user_ids"]:
+    if user.role != 'admin' and user_id not in trivia["user_ids_invitations"]:
         raise HTTPException(status_code=403, detail="El usuario no está incluido en esta trivia")
 
     # Verifica la cantidad de información a retornar dependiendo del rol del usuario
@@ -215,7 +213,7 @@ async def get_question_for_trivia(trivia_id: str, user_email: str) -> DisplayedQ
     trivia = await get_trivia(trivia_id)
 
     # Si no es admin, verificar si el usuario es parte de la Trivia
-    if user.role != 'admin' and user_id not in trivia["user_ids"]:
+    if user.role != 'admin' and user_id not in trivia["user_ids_invitations"]:
         raise HTTPException(status_code=403, detail="El usuario no está incluido en esta Trivia")
 
     # Verificar si el estado de la trivia permite la acción
@@ -265,7 +263,7 @@ async def submit_answer(trivia_id: str, question_id: str, answer_index: int, use
     trivia = await get_trivia(trivia_id)
 
     # Verificar que el usuario esté en la trivia
-    if user_id not in trivia["user_ids"]:
+    if user_id not in trivia["user_ids_invitations"]:
         raise HTTPException(status_code=403, detail="El usuario no está incluido en esta Trivia")
 
     # Verificar si el estado de la trivia permite la acción

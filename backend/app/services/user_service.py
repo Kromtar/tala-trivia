@@ -66,7 +66,7 @@ async def get_trivias_invitations_for_user(user_email: str) -> List[str]:
     if user is False:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     user_id = user.id
-    query = {"user_ids": user_id, "status": "waiting_start"}
+    query = {"user_ids_invitations": user_id, "status": "waiting_start"}
     trivias = await trivia_collection.find(query).to_list(100)
     return [str(trivia["_id"]) for trivia in trivias]
 
@@ -99,7 +99,7 @@ async def get_trivias_played_by_user(user_email: str) -> List[str]:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     user_id = user.id
     trivias = await trivia_collection.find({
-        "user_ids": user_id,
+        "user_ids_invitations": user_id,
         "status": "ended"
     }).to_list(length=None)
     return [str(trivia["_id"]) for trivia in trivias]

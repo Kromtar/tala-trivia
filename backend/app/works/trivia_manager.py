@@ -95,7 +95,7 @@ async def trivia_worker(trivia_id: str) -> None:
         trivia = await get_trivia(trivia_id, False)
 
         # Obtener la lista de todos los jugadores de la trivia
-        all_user_ids = set(trivia.get("user_ids", []))
+        all_user_ids = set(trivia.get("user_ids_invitations", []))
 
         # Recorrer los rounds y procesar aquellos que no tengan la propiedad "round_score"
         for round_data in trivia.get("rounds", []):

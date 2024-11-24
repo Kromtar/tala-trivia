@@ -5,7 +5,7 @@ from app.routes.question_routes import router as question_routes
 from app.routes.trivia_routes import router as trivia_routes
 
 # FUTURE: Si todos los jugadores responden una ronda y aun hay tiempo, la ronda termina y pasa a la siguiente
-# TODO: Editar user_ids por algo mas similar a "invitaciones"
+# FUTURE: Reemplazar el uso de IDs por emails para invitar jugadores a una Trivia
 
 app = FastAPI(
     title="TalaTrivia API",
