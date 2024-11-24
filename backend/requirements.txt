@@ -6,4 +6,4 @@ bcrypt
 python-jose
 black
 flake8
-pytest-asyncio
+httpx
