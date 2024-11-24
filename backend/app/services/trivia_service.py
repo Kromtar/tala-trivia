@@ -4,6 +4,7 @@ from motor.motor_asyncio import AsyncIOMotorCollection
 from app.models.trivia import Trivia, TriviaInDB, TriviaProtected
 from datetime import datetime
 from app.models.question import DisplayedQuestion
+from app.models.user import UserRanking
 from app.core.config import db
 from app.services.user_service import get_user_by_email
 from app.core.constants import QUESTION_STATUS
@@ -23,7 +24,8 @@ async def create_trivia(trivia: Trivia) -> TriviaInDB:
 
     # Verificar si las IDs de los usuarios existen
     user_ids_invitations = [ObjectId(user_id) for user_id in trivia.user_ids_invitations]
-    existing_users = await users_collection.find({"_id": {"$in": user_ids_invitations}}).to_list(len(user_ids_invitations))
+    existing_users = await users_collection.find(
+        {"_id": {"$in": user_ids_invitations}}).to_list(len(user_ids_invitations))
     if len(existing_users) != len(user_ids_invitations):
         raise HTTPException(status_code=400, detail="Algunas IDs de usuario no existen en la base de datos")
 
@@ -308,3 +310,25 @@ async def submit_answer(trivia_id: str, question_id: str, answer_index: int, use
         raise HTTPException(status_code=400, detail="No se pudo registrar la respuesta")
 
     return str(answer_index)
+
+
+async def get_trivia_ranking(trivia_id: str) -> List[UserRanking]:
+    """
+    Retorna el Ranking de los jugadores de una Trivia
+    """
+
+    trivia = await get_trivia(trivia_id)
+    if trivia is None:
+        raise HTTPException(status_code=404, detail="Trivia no encontrada.")
+    if trivia["status"] != "ended":
+        raise HTTPException(status_code=400, detail="Esta Trivia no está finalizada")
+
+    ranking = sorted(trivia["final_score"], key=lambda x: x['score'], reverse=True)
+    players_details = []
+    position = 1
+    for score in ranking:
+        user = await users_collection.find_one({"_id": ObjectId(score["user_id"])})
+        players_details.append(UserRanking(position=position, name=user["name"], final_score=int(score["score"])))
+        position += 1
+
+    return players_details

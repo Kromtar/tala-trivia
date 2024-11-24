@@ -56,3 +56,20 @@ class UserToken(BaseModel):
         ...,
         description="Tipo de Token",
     )
+
+class UserRanking(BaseModel):
+    position: int = Field(
+        ...,
+        description="Posición en el Ranking de la Trivia",
+        example=2
+    )
+    name: str = Field(
+        ...,
+        description="El nombre completo del usuario.",
+        example="GuitarHero"
+    )
+    final_score: int = Field(
+        ...,
+        description="La puntuación final del usuario en la Trivia.",
+        example=85
+    )

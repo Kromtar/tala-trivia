@@ -9,9 +9,11 @@ from app.services.trivia_service import (
     leave_trivia,
     get_trivia_details,
     get_question_for_trivia,
-    submit_answer
+    submit_answer,
+    get_trivia_ranking
 )
 from app.models.question import DisplayedQuestion
+from app.models.user import UserRanking
 from app.core.auth import admin_required, player_or_admin_required
 
 router = APIRouter()
@@ -162,3 +164,21 @@ async def submit_answer_to_trivia_question(
     current_user: dict = Depends(player_or_admin_required),
 ):
     return await submit_answer(trivia_id, question_id, answer_position, current_user["email"])
+
+
+@router.get(
+    "/trivias/{trivia_id}/ranking",
+    response_model=List[UserRanking],
+    summary="Ver el ranking de una trivia finalizada",
+    description="Este endpoint devuelve el ranking de los jugadores de una trivia determinada.\
+        La Trivia debe haber finalizado y se devuelve una lista ordenada de jugadores con sus puntos.",
+    tags=["Trivias"]
+)
+async def trivia_ranking(
+    trivia_id: str = Path(
+        ...,
+        description="El identificador único de la Trivia cuyo ranking se desea ver."
+    ),
+    current_user: dict = Depends(player_or_admin_required),
+):
+    return await get_trivia_ranking(trivia_id)
