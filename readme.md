@@ -29,7 +29,7 @@ Esto va a crear los siguientes usuarios:
 
 También se van a crear 4 preguntas, con 4 alternativas de respuesta, del tópico "recursos humanos". 
 
-Finalmente se va a crear una Trivia, con esas 4 preguntas, donde quedan invitado los usuarios `player1` y `player2` para jugar. Esta Trivia queda configurada con rondas de 60 segundos.
+Finalmente se va a crear una Trivia, con esas 4 preguntas, donde quedan invitados los usuarios `player1` y `player2` para jugar. Esta Trivia queda configurada con rondas de 60 segundos.
 
 Nota: el endpoint `/db_populator` no esta protegido y es meramente para que sea mas fácil probar este proyecto.
 
