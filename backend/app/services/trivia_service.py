@@ -227,6 +227,10 @@ async def get_question_for_trivia(trivia_id: str, user_email: str) -> DisplayedQ
     if not active_question:
         raise HTTPException(status_code=400, detail="No hay una pregunta activa en esta Trivia")
 
+    # Antepone numero en el texto de la pregunta
+    for pa_i in range(len(active_question["possible_answers"])):
+        active_question["possible_answers"][pa_i] = f"{pa_i + 1}) {active_question['possible_answers'][pa_i]}"
+
     # Verificar si el usuario ya respondió la pregunta
     answered_status = QUESTION_STATUS[1]
     for response in active_question.get("responses", []):
